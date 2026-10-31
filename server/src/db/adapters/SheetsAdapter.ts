@@ -12,6 +12,24 @@ import { SCHEMA_VERSION, TABLES, getTable, type TableName } from '../../../../sh
 import type { Db, Row } from '../Db';
 import { coerceRow, nextId, normalizeRow, toCell } from '../coerce';
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Retry Google API calls on quota (429) and transient server errors (500/502/503/504). */
+export async function withRetry<T>(fn: () => Promise<T>, attempts = 5, baseMs = 1000): Promise<T> {
+  let last: any;
+  for (let i = 0; i < attempts; i++) {
+    try { return await fn(); } catch (e: any) {
+      last = e;
+      const code = Number(e?.code ?? e?.status ?? e?.response?.status);
+      if (![429, 500, 502, 503, 504].includes(code) || i === attempts - 1) throw e;
+      const wait = baseMs * 2 ** i + Math.floor(Math.random() * 250);
+      console.warn(`[sheets] Google returned ${code}; retrying in ${Math.round(wait / 1000)}s (${i + 1}/${attempts - 1})`);
+      await sleep(wait);
+    }
+  }
+  throw last;
+}
+
 function colLetter(n: number): string {
   let s = '';
   let x = n;
@@ -33,9 +51,13 @@ export class SheetsAdapter implements Db {
 
   constructor(private spreadsheetId: string, private keyFile: string) {}
 
+  /**
+   * Serialised writes with retry. Google allows ~60 write requests per minute per user; a 429 (quota) or a
+   * transient 5xx is retried with exponential backoff so the sheet does not drift from the in-memory cache.
+   */
   private enqueue<T>(fn: () => Promise<T>): Promise<T> {
-    const job = this.queue.then(fn);
-    this.queue = job.catch((e) => console.error('[sheets] write failed:', e?.message || e));
+    const job = this.queue.then(() => withRetry(fn));
+    this.queue = job.catch((e) => console.error('[sheets] write failed after retries (use Data admin > Reload to resync):', e?.message || e));
     return job;
   }
 

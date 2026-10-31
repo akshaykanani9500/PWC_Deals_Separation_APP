@@ -7,6 +7,10 @@ import { visibleProjectIds } from '../services/access';
 import { isOverdue, today } from '../services/rollup';
 import { userIndex } from './helpers';
 
+/** Actions a CLIENT may see in the activity feed. */
+const CLIENT_FEED = /^(task\.(update|create)|stage\.gate|activity\.(create|update))/;
+const READ_ONLY_AI = /^ai\.(summary|piku|draft|meeting|status|closeout)/;
+
 export function dashboardRouter(db: Db): Router {
   const r = Router();
   r.get('/', ah(async (req, res) => {
@@ -54,6 +58,10 @@ export function dashboardRouter(db: Db): Router {
 
     const audits = (await db.all<AuditEntry>('audit_log'))
       .filter((a) => a.project_id && ids.has(a.project_id) && a.action !== 'access.denied')
+      // The client viewer only sees delivery progress, never internal AI use, close-out work or other people's reads.
+      .filter((a) => auth.code !== 'CLIENT' || CLIENT_FEED.test(a.action))
+      // Read-only AI calls (summaries, Piku questions) are noise in a team feed; keep only the asker's own.
+      .filter((a) => !READ_ONLY_AI.test(a.action) || a.actor_user_id === auth.user.user_id)
       .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
       .slice(0, 15);
 

@@ -68,7 +68,7 @@ export default function CloseoutPanel({ open, detail, onClose, onClosed }: { ope
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
               {Object.entries(preview.metrics).map(([k, v]) => (
                 <div key={k} className="rounded-md bg-sunken px-2.5 py-1.5">
-                  <div className="text-[11px] text-ink-muted">{k.replace(/_/g, ' ')}</div>
+                  <div className="text-[11px] text-ink-muted">{metricLabel(k)}</div>
                   <div className="num text-[14px] font-medium">{typeof v === 'number' ? v.toLocaleString() : v}</div>
                 </div>
               ))}
@@ -117,4 +117,16 @@ export default function CloseoutPanel({ open, detail, onClose, onClosed }: { ope
       )}
     </SidePanel>
   );
+}
+
+const METRIC_LABELS: Record<string, string> = {
+  duration_days: 'Duration (days)', stages: 'Stages', activities: 'Activities', tasks_total: 'Tasks', tasks_done_pct: 'Tasks done (%)',
+  overdue_at_close: 'Overdue at close', blocked_at_close: 'Blocked at close', day1_critical_items: 'Day-1 critical items',
+  tsa_services: 'TSA services', tsa_extensions: 'TSA extensions', tsa_monthly_cost: 'TSA cost per month', funding_gap: 'Funding gap',
+  communications: 'Emails, calls, meetings', apps_in_scope: 'Apps in scope',
+};
+function metricLabel(k: string) {
+  if (METRIC_LABELS[k]) return METRIC_LABELS[k];
+  const t = k.replace(/_/g, ' ').replace(/\bpct\b/, '(%)').replace(/\bday1\b/i, 'Day-1');
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }

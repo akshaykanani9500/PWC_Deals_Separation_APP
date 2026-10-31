@@ -178,7 +178,7 @@ export function FinancePanel({ open, detail, onClose }: { open: boolean; detail:
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
               {Object.entries(data.totals).map(([k, v]) => (
                 <div key={k} className="rounded-lg bg-sunken px-3 py-2">
-                  <div className="text-[11.5px] capitalize text-ink-muted">{k.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()}</div>
+                  <div className="text-[11.5px] text-ink-muted">{financeLabel(k)}</div>
                   <div className="num text-[16px] font-medium">{typeof v === 'number' && /hour|count|services/i.test(k) ? v.toLocaleString() : money(v, cur)}</div>
                 </div>
               ))}
@@ -228,4 +228,10 @@ export function FinancePanel({ open, detail, onClose }: { open: boolean; detail:
       )}
     </SidePanel>
   );
+}
+
+/** "tsaCostToDate" / "tsa_cost_to_date" -> "TSA cost to date" */
+function financeLabel(k: string) {
+  const t = k.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().replace(/\btsa\b/g, 'TSA');
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }

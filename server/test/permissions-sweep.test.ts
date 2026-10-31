@@ -124,6 +124,23 @@ describe('permission leak sweep', () => {
     }
   }, 120000);
 
+  it("other people's AI use never shows up in a client's or teammate's history and feed", async () => {
+    const task = t.data.tasks.find((x) => x.project_id === 'PRJ-0001' && x.is_deleted !== 'Y')!;
+    await t.as('USR-0004').post('/api/ai/summary', { scope: 'task', id: task.task_id });
+    await t.as('USR-0004').post('/api/ai/piku', { message: 'secret question about fees', language: 'en',
+      context: { type: 'task', projectId: 'PRJ-0001', stageId: task.stage_id, activityId: task.activity_id, taskId: task.task_id } });
+    for (const uid of ['USR-0016', 'USR-0010']) { // client, analyst
+      const td = await t.as(uid).get(`/api/tasks/${task.task_id}`);
+      expect(td.status).toBe(200);
+      for (const h of td.body.history) expect(h.action.startsWith('ai.'), `${uid} sees ${h.action}`).toBe(false);
+      expect(JSON.stringify(td.body.history)).not.toContain('secret question');
+    }
+    const dash = await t.as('USR-0016').get('/api/dashboard');
+    for (const a of dash.body.recentActivity) expect(a.action).toMatch(/^(task|stage|activity)\./);
+    const own = await t.as('USR-0004').get(`/api/tasks/${task.task_id}`);
+    expect(own.body.history.some((h: any) => h.action.startsWith('ai.'))).toBe(true); // the asker still sees their own
+  });
+
   it('knowledge items never expose source_project_id', async () => {
     for (const user of t.data.users) {
       const r = await t.as(user.user_id).get('/api/knowledge');

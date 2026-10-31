@@ -155,6 +155,9 @@ export const WIDGETS: WidgetDef[] = [
 export function humanAction(action: string): string {
   const map: Record<string, string> = {
     'auth.login': 'signed in', 'auth.logout': 'signed out', 'access.denied': 'was denied access to',
+    'ai.summary': 'asked AI for a summary of', 'ai.piku': 'asked Piku about', 'ai.suggest': 'got an AI suggestion for',
+    'ai.draft_email': 'drafted an email with AI for', 'ai.meeting': 'planned a meeting with AI for', 'ai.closeout_preview': 'prepared the close-out of',
+    'project.closeout': 'closed', 'stage.bulk_create': 'added stages to', 'activity.bulk_create': 'added activities to', 'task.bulk_create': 'added tasks to',
   };
   if (map[action]) return map[action];
   const [entity, verb] = action.split('.');

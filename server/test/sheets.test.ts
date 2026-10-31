@@ -64,3 +64,16 @@ describe('SheetsAdapter', () => {
     expect(fake.tabs.get('tasks')![0]).toEqual(TABLES.find((t) => t.name === 'tasks')!.columns.map((c) => c.name));
   });
 });
+
+import { withRetry } from '../src/db/adapters/SheetsAdapter';
+describe('Sheets write retry', () => {
+  it('retries 429 and 503, gives up on 403', async () => {
+    let n = 0;
+    const r = await withRetry(async () => { n++; if (n < 3) throw Object.assign(new Error('quota'), { code: n === 1 ? 429 : 503 }); return 'ok'; }, 5, 1);
+    expect(r).toBe('ok');
+    expect(n).toBe(3);
+    let m = 0;
+    await expect(withRetry(async () => { m++; throw Object.assign(new Error('denied'), { code: 403 }); }, 5, 1)).rejects.toThrow('denied');
+    expect(m).toBe(1);
+  });
+});

@@ -147,7 +147,13 @@ export function tasksRouter(db: Db): Router {
     const perms = await canEditTask(db, auth, task);
     const comms = filterCommunications(await db.find<Communication>('communications', (c) => c.task_id === task.task_id), auth).sort((a, b) => (a.occurred_at < b.occurred_at ? 1 : -1));
     const notes = auth.code === 'CLIENT' ? [] : (await db.find<QuickNote>('quick_notes', (n) => n.task_id === task.task_id)).map((n) => ({ ...n, author_name: idx.name(n.created_by) }));
-    const history = (await db.find<AuditEntry>('audit_log', (a) => a.entity_id === task.task_id && a.action !== 'access.denied')).sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, 30);
+    // History = changes to the task. Other people's AI questions/summaries about it are private to them,
+    // and the client viewer sees only status changes (never internal details).
+    const history = (await db.find<AuditEntry>('audit_log', (a) => a.entity_id === task.task_id && a.action !== 'access.denied'
+      && (!a.action.startsWith('ai.') || a.actor_user_id === auth.user.user_id)
+      && (auth.code !== 'CLIENT' || a.action.startsWith('task.'))))
+      .map((a) => (auth.code === 'CLIENT' ? { ...a, details: null } : a))
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, 30);
     const detail: TaskDetail = { task: { ...task, assignee_name: idx.name(task.assignee_user_id) }, communications: comms, notes, history, perms };
     res.json(detail);
   }));
