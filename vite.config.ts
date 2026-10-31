@@ -15,5 +15,18 @@ export default defineConfig({
     strictPort: false,
     proxy: { '/api': { target: `http://localhost:${apiPort}`, changeOrigin: true } },
   },
-  build: { outDir: '../dist/client', emptyOutDir: true },
+  build: {
+    outDir: '../dist/client',
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Split big libraries into their own cached files.
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          charts: ['recharts'],
+          grid: ['react-grid-layout'],
+        },
+      },
+    },
+  },
 });

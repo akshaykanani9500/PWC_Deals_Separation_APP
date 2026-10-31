@@ -192,7 +192,7 @@ function PikuInner({ firstName }: { firstName: string }) {
           onClick={() => setOpen(true)}
           aria-label="Open Piku, the AI assistant"
           data-testid="piku-bubble"
-          className="group fixed bottom-6 right-6 z-[70] flex items-center gap-2 rounded-full bg-piku py-2 pl-2 pr-4 text-white shadow-pop ring-4 ring-piku-soft transition hover:-translate-y-0.5 hover:bg-[#4d33bd] focus:outline-none focus-visible:ring-brand-ring"
+          className="piku-bubble group fixed bottom-6 right-6 z-[70] flex items-center gap-2 rounded-full bg-piku py-2 pl-2 pr-4 text-white shadow-pop ring-4 ring-piku-soft transition hover:-translate-y-0.5 hover:bg-[#4d33bd] focus:outline-none focus-visible:ring-brand-ring"
         >
           <span className="rounded-full bg-white/15 p-0.5"><PikuMascot size={36} /></span>
           <span className="text-sm font-semibold tracking-wide">Ask Piku</span>
@@ -259,12 +259,12 @@ function PikuInner({ firstName }: { firstName: string }) {
                 {m.sender === 'user' ? (
                   <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-ink px-3.5 py-2 text-sm text-white">{m.body}</div>
                 ) : (
-                  <div className={`max-w-[92%] rounded-2xl rounded-bl-md border px-3.5 py-2.5 shadow-card ${m.error ? 'border-rose/30 bg-rose-soft' : 'border-line bg-surface'}`}>
+                  <div data-testid="piku-answer" className={`max-w-[92%] rounded-2xl rounded-bl-md border px-3.5 py-2.5 shadow-card ${m.error ? 'border-rose/30 bg-rose-soft' : 'border-line bg-surface'}`}>
                     <RichText text={m.body} />
                     {!!m.sources?.length && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {m.sources.map((s, i) => (
-                          <button key={`${s.type}${s.id}`} type="button" disabled={!s.href}
+                          <button key={`${s.type}${s.id}`} type="button" disabled={!s.href} data-testid="piku-source" data-href={s.href ?? ''}
                             onClick={() => s.href && navigate(s.href)}
                             className="inline-flex max-w-full items-center gap-1 rounded-md border border-line bg-sunken px-1.5 py-0.5 text-[11px] text-ink-soft hover:border-piku/40 hover:text-piku disabled:cursor-default"
                             title={s.label}>

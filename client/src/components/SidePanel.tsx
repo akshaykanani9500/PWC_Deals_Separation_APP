@@ -22,6 +22,8 @@ export interface SidePanelProps {
   width?: 'md' | 'lg' | 'xl';
 }
 
+let openPanels = 0;
+
 export function SidePanel({ open, onClose, title, subtitle, headerRight, children, footer, onSave, saveLabel = 'Save changes', saving, saveDisabled, width = 'md' }: SidePanelProps) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -30,10 +32,16 @@ export function SidePanel({ open, onClose, title, subtitle, headerRight, childre
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     const prev = document.activeElement as HTMLElement | null;
-    // Lets other floating UI (e.g. the Piku bubble) know a side panel is open.
+    // Lets other floating UI (e.g. the Piku bubble) know a side panel is open. Counted, so nested panels work.
+    openPanels += 1;
     document.body.dataset.sidepanel = 'open';
     setTimeout(() => ref.current?.focus(), 0);
-    return () => { window.removeEventListener('keydown', onKey); delete document.body.dataset.sidepanel; prev?.focus?.(); };
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      openPanels = Math.max(0, openPanels - 1);
+      if (openPanels === 0) delete document.body.dataset.sidepanel;
+      prev?.focus?.();
+    };
   }, [open, onClose]);
 
   if (!open) return null;
@@ -59,7 +67,7 @@ export function SidePanel({ open, onClose, title, subtitle, headerRight, childre
         </header>
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {(footer || onSave) && (
-          <footer className="flex items-center justify-end gap-2 border-t border-line bg-canvas/60 py-3 pl-5 pr-[176px]">
+          <footer className="flex items-center justify-end gap-2 border-t border-line bg-canvas/60 py-3 px-5">
             {footer ?? (
               <>
                 <Button variant="ghost" onClick={onClose}>Cancel</Button>

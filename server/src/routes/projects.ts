@@ -181,7 +181,7 @@ export function projectsRouter(db: Db): Router {
     const created = await createStageTree(db, me, project.project_id, tree);
     await db.update('projects', project.project_id, { current_stage_id: created[0]?.stage_id ?? null }, me);
     await rollupProject(db, project.project_id, me);
-    await audit(db, auth, 'project.create', { type: 'project', id: project.project_id, projectId: project.project_id, details: { code_name: project.code_name, stages: created.length } });
+    await audit(db, auth, 'project.create', { type: 'project', id: project.project_id, projectId: project.project_id, details: { code_name: project.code_name, stages: created.length, fromAiPlan: !!req.body?.fromAi }, ai: !!req.body?.fromAi });
     res.status(201).json(await projectDetail(db, auth, project.project_id));
   }));
 

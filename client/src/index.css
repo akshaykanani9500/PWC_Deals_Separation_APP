@@ -33,3 +33,9 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* While a side panel is open, Piku's bubble moves to the bottom-left so it never covers panel buttons. */
+body[data-sidepanel='open'] .piku-bubble {
+  right: auto;
+  left: 1.5rem;
+}

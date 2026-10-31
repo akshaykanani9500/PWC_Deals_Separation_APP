@@ -10,7 +10,15 @@ async function main() {
   const db = await createDb();
   const counts = await db.counts();
   if (!counts.users) {
-    console.warn('[db] The database is empty. Run `npm run db:seed` to load the demo data, then restart.');
+    // First run on a fresh clone (or a brand-new Google Sheet): load the demo data automatically.
+    console.log('[db] The database is empty -> loading demo data (same as `npm run db:seed`)...');
+    const { buildSeed } = await import('../../scripts/seed');
+    const { TABLES } = await import('../../shared/schema');
+    const data = await buildSeed();
+    for (const t of TABLES) await db.replaceTable(t.name as any, data[t.name]);
+    await db.markSeeded?.();
+    await db.reload();
+    console.log('[db] Demo data loaded.');
   }
   const app = createApp(db);
 
