@@ -1,0 +1,245 @@
+/**
+ * Row types (mirror shared/schema.ts) and API payload types.
+ * Booleans are 'Y' | 'N', dates are 'YYYY-MM-DD', timestamps ISO strings - same as in the sheet.
+ */
+import type {
+  PERSONA_CODES, PROJECT_STATUS, RAG, WORK_STATUS, PRIORITY, GATE_STATUS, DEAL_TYPES, INDUSTRIES,
+  COMM_CHANNELS, CONTACT_SIDES, MEMBER_ROLES, KNOWLEDGE_TYPES, KNOWLEDGE_STATUS, CONSENT_STATUS, SENSITIVITY, LANGUAGES,
+} from './schema';
+import type { Action } from './permissions';
+
+export type PersonaCode = (typeof PERSONA_CODES)[number];
+export type ProjectStatus = (typeof PROJECT_STATUS)[number];
+export type Rag = (typeof RAG)[number];
+export type WorkStatus = (typeof WORK_STATUS)[number];
+export type Priority = (typeof PRIORITY)[number];
+export type GateStatus = (typeof GATE_STATUS)[number];
+export type DealType = (typeof DEAL_TYPES)[number];
+export type Industry = (typeof INDUSTRIES)[number];
+export type CommChannel = (typeof COMM_CHANNELS)[number];
+export type ContactSide = (typeof CONTACT_SIDES)[number];
+export type MemberRole = (typeof MEMBER_ROLES)[number];
+export type KnowledgeType = (typeof KNOWLEDGE_TYPES)[number];
+export type KnowledgeStatus = (typeof KNOWLEDGE_STATUS)[number];
+export type ConsentStatus = (typeof CONSENT_STATUS)[number];
+export type Sensitivity = (typeof SENSITIVITY)[number];
+export type Lang = (typeof LANGUAGES)[number];
+export type YN = 'Y' | 'N';
+
+interface AuditCols {
+  created_at: string;
+  created_by?: string | null;
+  updated_at?: string | null;
+  updated_by?: string | null;
+  is_deleted: YN;
+}
+
+export interface Persona {
+  persona_id: string; code: PersonaCode; name: string; title?: string; description?: string;
+  home_route?: string; accent_color?: string; sort_order?: number;
+}
+
+export interface User extends AuditCols {
+  user_id: string; persona_id: string; full_name: string; email?: string; phone?: string; location?: string; org?: string;
+  preferred_language?: Lang; dashboard_layout?: string | null; is_active: YN;
+}
+
+export interface Project extends AuditCols {
+  project_id: string; code_name: string; client_alias?: string; deal_type?: DealType; industry?: Industry; description?: string;
+  status: ProjectStatus; rag?: Rag; percent_complete?: number; current_stage_id?: string | null;
+  partner_user_id?: string | null; manager_user_id?: string | null;
+  start_date?: string | null; target_close_date?: string | null; closed_date?: string | null;
+  currency?: string; fee_budget?: number | null; fee_billed?: number | null; tsa_monthly_cost?: number | null;
+  one_time_cost?: number | null; funding_gap?: number | null;
+  apps_in_scope?: number | null; sites_in_scope?: number | null; employees_conveying?: number | null;
+  sensitivity?: Sensitivity; data_residency?: string; clean_team_required?: YN; reuse_consent?: ConsentStatus; tags?: string;
+}
+
+export interface ProjectMember extends AuditCols {
+  member_id: string; project_id: string; user_id: string; member_role?: MemberRole; workstream?: string; clean_team?: YN;
+}
+
+export interface Stage extends AuditCols {
+  stage_id: string; project_id: string; name: string; description?: string; sort_order: number; status?: WorkStatus;
+  percent_complete?: number; owner_user_id?: string | null; start_date?: string | null; end_date?: string | null;
+  gate_status?: GateStatus; gate_criteria?: string; gate_approver_id?: string | null;
+}
+
+export interface Activity extends AuditCols {
+  activity_id: string; project_id: string; stage_id: string; name: string; description?: string; sort_order: number;
+  status?: WorkStatus; priority?: Priority; percent_complete?: number; owner_user_id?: string | null;
+  start_date?: string | null; due_date?: string | null; summary?: string;
+}
+
+export interface Task extends AuditCols {
+  task_id: string; project_id: string; stage_id: string; activity_id: string; title: string; description?: string;
+  assignee_user_id?: string | null; status: WorkStatus; priority?: Priority; start_date?: string | null; due_date?: string | null;
+  completed_date?: string | null; effort_hours?: number | null; percent_complete?: number; day1_critical?: YN;
+  dependency_notes?: string; done_notes?: string; pending_notes?: string; sort_order?: number;
+}
+
+export interface Contact extends AuditCols {
+  contact_id: string; project_id: string; full_name: string; org?: string; role_title?: string; side?: ContactSide;
+  email?: string; phone?: string;
+}
+
+export interface Communication extends AuditCols {
+  comm_id: string; project_id: string; stage_id?: string | null; activity_id?: string | null; task_id?: string | null;
+  channel: CommChannel; subject?: string; body?: string; from_name?: string; to_name?: string; contact_id?: string | null;
+  occurred_at: string; duration_min?: number | null; ai_summary?: string;
+}
+
+export interface QuickNote extends AuditCols {
+  note_id: string; project_id: string; stage_id?: string | null; activity_id?: string | null; task_id?: string | null;
+  body: string; pinned?: YN;
+}
+
+export interface FinanceEntry extends AuditCols {
+  finance_id: string; project_id: string; period_month: string; fee_planned?: number; fee_actual?: number;
+  tsa_cost?: number; one_time_cost?: number; hours_logged?: number;
+}
+
+export interface TsaService extends AuditCols {
+  service_id: string; project_id: string; name: string; provider?: string; monthly_fee?: number; start_date?: string;
+  planned_exit_date?: string; extension_uplift_pct?: number; status?: 'Active' | 'Exiting' | 'Exited' | 'Extended'; linked_apps?: string;
+}
+
+export interface KnowledgeItem extends AuditCols {
+  knowledge_id: string; source_project_id?: string | null; source_label?: string; item_type: KnowledgeType;
+  deal_type?: DealType; industry?: Industry; stage_name?: string; title: string; body?: string; payload?: string | null;
+  tags?: string; consent_status?: ConsentStatus; review_status: KnowledgeStatus; reviewed_by?: string | null;
+  reviewed_at?: string | null; times_used?: number;
+}
+
+export interface ChatMessage extends AuditCols {
+  message_id: string; user_id: string; project_id?: string | null; context_type?: PikuContextType; context_id?: string | null;
+  sender: 'user' | 'piku'; body: string; language?: Lang; ai_mode?: string; sources?: string | null;
+}
+
+export interface AuditEntry {
+  audit_id: string; actor_user_id?: string | null; persona_code?: string; action: string; entity_type?: string;
+  entity_id?: string | null; project_id?: string | null; details?: string | null; ai_generated?: YN; created_at: string;
+}
+
+// ---------------- API payloads ----------------
+
+/** Who is signed in. Returned by POST /api/auth/login and GET /api/auth/me */
+export interface Session {
+  token: string;
+  user: User;
+  persona: Persona;
+  /** Actions this persona may perform (from shared/permissions.ts) */
+  actions: Action[];
+  scope: 'all' | 'member';
+}
+
+/** Per-record permission flags the server attaches so the UI can show/hide buttons precisely. */
+export interface RowPermissions { canEdit: boolean; canDelete: boolean; }
+
+export interface ProjectListItem extends Project {
+  partner_name?: string; manager_name?: string; current_stage_name?: string;
+  open_tasks: number; overdue_tasks: number; blocked_tasks: number; team_size: number;
+}
+
+export interface ProjectDetail {
+  project: Project & { partner_name?: string; manager_name?: string };
+  stages: (Stage & { owner_name?: string; perms: RowPermissions })[];
+  members: (ProjectMember & { full_name: string; persona_code: PersonaCode })[];
+  /** What the current user may do on this project */
+  perms: {
+    canEditProject: boolean; canEditStages: boolean; canClose: boolean; canApproveGate: boolean;
+    canViewFinance: boolean; canAddNotes: boolean; canUseAiSuggest: boolean;
+  };
+}
+
+export interface StageDetail {
+  stage: Stage;
+  activities: (Activity & { owner_name?: string; task_count: number; done_count: number; perms: RowPermissions })[];
+  perms: { canEditActivities: boolean };
+}
+
+export interface ActivityDetail {
+  activity: Activity & { owner_name?: string };
+  tasks: (Task & { assignee_name?: string; perms: RowPermissions })[];
+  notes: (QuickNote & { author_name?: string })[];
+  communications: Communication[];
+  contacts: Contact[];
+  stats: { total: number; done: number; inProgress: number; blocked: number; overdue: number; day1Critical: number; hours: number };
+  perms: { canEditActivity: boolean; canAddTask: boolean; canAddNote: boolean };
+}
+
+export interface TaskDetail {
+  task: Task & { assignee_name?: string };
+  communications: Communication[];
+  notes: (QuickNote & { author_name?: string })[];
+  history: AuditEntry[];
+  perms: RowPermissions & { editableFields: (keyof Task)[] };
+}
+
+export interface DashboardData {
+  kpis: {
+    activeProjects: number; atRisk: number; avgCompletion: number; openTasks: number; overdueTasks: number;
+    blockedTasks: number; day1CriticalOpen: number;
+    /** finance KPIs are null when the persona lacks finance.view */
+    feeBudget: number | null; feeBilled: number | null; tsaMonthly: number | null; fundingGap: number | null;
+  };
+  byStatus: { status: ProjectStatus; count: number }[];
+  byRag: { rag: Rag; count: number }[];
+  byStage: { stage: string; count: number }[];
+  byIndustry: { industry: string; count: number }[];
+  financeTrend: { period_month: string; fee_planned: number; fee_actual: number; tsa_cost: number }[] | null;
+  upcoming: { task_id: string; title: string; project_id: string; code_name: string; due_date: string; status: WorkStatus; assignee_name?: string }[];
+  recentActivity: AuditEntry[];
+}
+
+export type PikuContextType = 'global' | 'project' | 'stage' | 'activity' | 'task';
+
+export interface PikuRequest {
+  message: string;
+  /** 'auto' = detect from the message */
+  language: Lang | 'auto';
+  context: { type: PikuContextType; projectId?: string; stageId?: string; activityId?: string; taskId?: string };
+}
+
+export interface PikuResponse {
+  answer: string;
+  language: Lang;
+  mode: string;                // e.g. "gemini-2.5-flash" or "offline"
+  sources: { type: string; id: string; label: string; href?: string }[];
+  suggestedActions?: { label: string; href?: string; prompt?: string }[];
+}
+
+/** AI "Get suggestion" in edit side panels */
+export type SuggestKind = 'project' | 'stages' | 'stage' | 'activities' | 'activity' | 'tasks' | 'task';
+
+export interface SuggestRequest {
+  kind: SuggestKind;
+  projectId?: string; stageId?: string; activityId?: string; taskId?: string;
+  /** current form values (draft) */
+  current?: Record<string, unknown>;
+  /** for new projects: deal type / industry chosen in the form */
+  hints?: { deal_type?: string; industry?: string; name?: string; description?: string };
+}
+
+export interface SuggestResponse {
+  kind: SuggestKind;
+  mode: string;
+  rationale: string;
+  /** knowledge items / past patterns used */
+  sources: { id: string; label: string }[];
+  /** Draft values. For list kinds: an array of rows to add. For single kinds: field -> value. */
+  draft: Record<string, unknown> | Record<string, unknown>[];
+}
+
+export interface SummaryResponse { summary: string; mode: string; highlights: string[]; risks: string[]; nextSteps: string[] }
+
+export interface CloseoutPreview {
+  project: Project;
+  metrics: Record<string, number | string>;
+  proposedItems: Omit<KnowledgeItem, 'knowledge_id' | 'created_at' | 'is_deleted'>[];
+  redactions: { field: string; original: string; redacted: string }[];
+  lessonsDraft: string;
+  mode: string;
+}
+
+export interface ApiError { error: string; code?: 'UNAUTHENTICATED' | 'FORBIDDEN' | 'NOT_FOUND' | 'VALIDATION' | 'SERVER' }

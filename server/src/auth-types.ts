@@ -1,0 +1,14 @@
+import type { Request } from 'express';
+import type { Persona, PersonaCode, User } from '../../shared/types';
+import type { Action } from '../../shared/permissions';
+
+/** Set on every authenticated request by middleware/auth.ts */
+export interface AuthContext {
+  user: User;
+  persona: Persona;
+  code: PersonaCode;
+  actions: Action[];
+  scope: 'all' | 'member';
+}
+
+export type AuthedRequest = Request & { auth: AuthContext };

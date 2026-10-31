@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+# Local database files (each person gets their own copy, created from db/seed by `npm run db:seed`)
+data/*
+!data/.gitkeep
+# Google service-account keys must never be committed
+credentials/
+*service-account*.json
+test-results/
+playwright-report/
+.DS_Store
