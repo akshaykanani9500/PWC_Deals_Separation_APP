@@ -1,0 +1,35 @@
+@import 'react-grid-layout/css/styles.css';
+@import 'react-resizable/css/styles.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-font-smoothing: antialiased; }
+  body { @apply bg-canvas text-ink font-sans text-[13.5px] leading-[1.45]; }
+  :focus-visible { outline: 2px solid theme('colors.brand.ring'); outline-offset: 2px; }
+  ::selection { background: theme('colors.brand.soft'); }
+  input, select, textarea { font: inherit; }
+}
+
+@layer components {
+  .num { @apply font-mono tabular-nums; }
+  .card { @apply bg-surface border border-line rounded-xl shadow-card; }
+  .input {
+    @apply w-full rounded-md border border-line bg-surface px-2.5 py-1.5 text-[13px] text-ink placeholder:text-ink-muted
+      focus:border-brand-ring focus:outline-none focus:ring-2 focus:ring-brand-soft disabled:bg-sunken disabled:text-ink-muted;
+  }
+  .label { @apply mb-1 block text-[12px] font-medium text-ink-soft; }
+  .th { @apply sticky top-0 z-[1] bg-sunken px-3 py-2 text-left text-[12px] font-medium text-ink-soft whitespace-nowrap; }
+  .td { @apply border-t border-line px-3 py-2 align-middle; }
+  .skeleton { @apply animate-pulse rounded bg-sunken; }
+}
+
+/* react-grid-layout: calm placeholder colour */
+.react-grid-item.react-grid-placeholder { background: theme('colors.brand.soft'); opacity: 0.7; border-radius: 14px; }
+.react-grid-item > .react-resizable-handle::after { border-color: theme('colors.ink.muted'); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

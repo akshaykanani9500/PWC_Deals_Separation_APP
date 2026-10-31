@@ -1,0 +1,92 @@
+[
+ {
+  "persona_id": "PER-0001",
+  "code": "EXEC",
+  "name": "Deals Leader",
+  "title": "Leader, Corporate Deals Technology",
+  "description": "Sees every deal, the portfolio and the money. Creates new engagements and watches risk; does not edit day-to-day work.",
+  "home_route": "/",
+  "accent_color": "#1D1B19",
+  "sort_order": 1
+ },
+ {
+  "persona_id": "PER-0002",
+  "code": "PARTNER",
+  "name": "Engagement Partner",
+  "title": "Onshore Engagement Partner",
+  "description": "Owns the client relationship. Full control of own deals, approves stage gates and AI output for clients, closes projects.",
+  "home_route": "/",
+  "accent_color": "#D04A02",
+  "sort_order": 2
+ },
+ {
+  "persona_id": "PER-0003",
+  "code": "MANAGER",
+  "name": "Engagement Manager",
+  "title": "Engagement Manager (AC)",
+  "description": "Runs deals day to day: plans stages and activities, assigns people, keeps the tracker current, starts close-out.",
+  "home_route": "/",
+  "accent_color": "#A83C02",
+  "sort_order": 3
+ },
+ {
+  "persona_id": "PER-0004",
+  "code": "LEAD",
+  "name": "Workstream Lead",
+  "title": "Senior Associate, Workstream Lead",
+  "description": "Leads a workstream (apps, network, Day-1, TSA). Edits activities and tasks in the stages they own.",
+  "home_route": "/",
+  "accent_color": "#2C5F8A",
+  "sort_order": 4
+ },
+ {
+  "persona_id": "PER-0005",
+  "code": "ANALYST",
+  "name": "Analyst",
+  "title": "Associate / Analyst (AC)",
+  "description": "Cleans inventories and updates the tasks assigned to them. Read-only elsewhere; contacts are masked.",
+  "home_route": "/",
+  "accent_color": "#2F7D4F",
+  "sort_order": 5
+ },
+ {
+  "persona_id": "PER-0006",
+  "code": "KM",
+  "name": "Knowledge Manager",
+  "title": "Knowledge Management Lead",
+  "description": "Reviews close-out learnings, redactions and tags before they enter the AI knowledge hub.",
+  "home_route": "/knowledge",
+  "accent_color": "#5B3FD0",
+  "sort_order": 6
+ },
+ {
+  "persona_id": "PER-0007",
+  "code": "RISK",
+  "name": "Risk & Quality / DPO",
+  "title": "Risk & Quality and Data Protection",
+  "description": "Read-only on every deal. Sees the audit log and approves reuse consent at close-out.",
+  "home_route": "/audit",
+  "accent_color": "#C8312A",
+  "sort_order": 7
+ },
+ {
+  "persona_id": "PER-0008",
+  "code": "CLIENT",
+  "name": "Client SMO Viewer",
+  "title": "Client Separation Management Office",
+  "description": "Read-only view of their own deal. No fees, no internal emails, contacts masked.",
+  "home_route": "/",
+  "accent_color": "#C98A00",
+  "sort_order": 8
+ },
+ {
+  "persona_id": "PER-0009",
+  "code": "ADMIN",
+  "name": "Platform Admin",
+  "title": "Deals Stack Platform Engineer",
+  "description": "Runs the data layer: database driver, Google Sheet sync and Oracle export. No content edits.",
+  "home_route": "/admin/data",
+  "accent_color": "#4A4642",
+  "sort_order": 9
+ }
+]
