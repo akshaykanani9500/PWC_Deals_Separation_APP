@@ -47,7 +47,7 @@ export function similar(a: string, b: string): number {
   let inter = 0; for (const x of A) if (B.has(x)) inter++;
   return inter / Math.min(A.size, B.size);
 }
-const isDup = (name: string, existing: string[]) => existing.some((e) => norm(e) === norm(name) || similar(e, name) >= 0.75);
+const isDup = (name: string, existing: string[]) => existing.some((e) => norm(e) === norm(name) || similar(e, name) >= 0.66);
 const addDays = (n: number) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
 
 function fromPlaybook(a: PlaybookActivity): DraftActivity {
