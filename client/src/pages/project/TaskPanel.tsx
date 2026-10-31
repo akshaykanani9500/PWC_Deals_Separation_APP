@@ -263,7 +263,7 @@ export function AddTaskPanel({ open, onClose, activity, onSaved }: { open: boole
         await post(`/activities/${activity.activity_id}/tasks`, { ...body, status: form.status || 'Not Started' });
       }
       if (picked.length) {
-        await post(`/activities/${activity.activity_id}/tasks/bulk`, { tasks: picked.map(({ title, priority, day1_critical, description }) => ({ title, priority, description, day1_critical: day1_critical === 'Y' ? 'Y' : 'N', status: 'Not Started' })) });
+        await post(`/activities/${activity.activity_id}/tasks/bulk`, { tasks: picked.map(({ title, priority, day1_critical, description }) => ({ title, priority, description, day1_critical: day1_critical === 'Y' ? 'Y' : 'N', status: 'Not Started' })), fromAi: true });
       }
       toast.success(picked.length ? `${picked.length + (form.title?.trim() ? 1 : 0)} tasks added` : 'Task added');
       onSaved(); onClose();

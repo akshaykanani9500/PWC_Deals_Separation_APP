@@ -84,6 +84,7 @@ export function StageEditorPanel({ open, detail, onClose, onSaved }: { open: boo
         created = await post<Stage[]>(`/projects/${detail.project.project_id}/stages/bulk`, {
           stages: fresh.map((r) => ({ name: r.name.trim(), description: r.description || undefined, gate_criteria: r.gate_criteria || undefined,
             owner_user_id: r.owner_user_id || undefined, activities: r.activities ? activitiesPayload(r.activities) : [] })),
+          fromAi: fresh.some((r) => r.fromAi),
         });
       }
       let ci = 0;

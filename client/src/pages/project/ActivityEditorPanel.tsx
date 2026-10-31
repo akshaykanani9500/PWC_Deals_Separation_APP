@@ -72,6 +72,7 @@ export function ActivityEditorPanel({ open, onClose, stageDetail, projectId, onS
         created = await post<Activity[]>(`/stages/${stage.stage_id}/activities/bulk`, {
           activities: fresh.map((r) => ({ name: r.name.trim(), description: r.description || undefined, owner_user_id: r.owner_user_id || undefined,
             priority: r.priority || undefined, due_date: r.due_date || undefined, tasks: r.tasks ? tasksPayload(r.tasks) : [] })),
+          fromAi: fresh.some((r) => r.fromAi),
         });
       }
       let ci = 0;
@@ -94,7 +95,7 @@ export function ActivityEditorPanel({ open, onClose, stageDetail, projectId, onS
           <div className="mb-4 rounded-lg border border-piku/25 bg-piku-soft/40 p-3">
             <div className="mb-1 flex items-center gap-2"><Sparkles size={13} className="text-piku" /><span className="text-[13px] font-semibold">Suggested activities</span>{aiMeta && <AiLabel mode={aiMeta.mode} />}</div>
             {aiMeta?.rationale && <p className="mb-1 text-[12.5px] text-ink-soft">{aiMeta.rationale}</p>}
-            {aiMeta?.sources?.length ? <p className="mb-2 text-[11.5px] text-ink-muted">Based on: {aiMeta.sources.map((s) => s.label).join('; ')}</p> : null}
+            {aiMeta?.sources?.length ? <p className="mb-2 text-[11.5px] text-ink-muted">Based on: {aiMeta.sources.slice(0, 3).map((s) => s.label).join('; ')}{aiMeta.sources.length > 3 ? ` and ${aiMeta.sources.length - 3} more` : ''}</p> : null}
             {ideas.length ? <ActivityList activities={ideas} onChange={setIdeas} /> : <p className="text-[12.5px] text-ink-muted">No new activities to suggest for this stage.</p>}
             <div className="mt-2 flex gap-2"><Button size="sm" variant="primary" onClick={addIdeas} disabled={!ideas.some((i) => i.include)}>Add selected to the list</Button><Button size="sm" variant="ghost" onClick={() => setIdeas(null)}>Dismiss</Button></div>
           </div>

@@ -65,7 +65,7 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
       const body: Record<string, unknown> = {
         ...Object.fromEntries(Object.entries(f).filter(([, v]) => v !== '')), status: 'Planning',
       };
-      if (plan) body.stages = stagesPayload(plan);
+      if (plan) { body.stages = stagesPayload(plan); if (aiMeta) body.fromAi = true; }
       const members: { user_id: string; member_role: string }[] = [];
       if (f.partner_user_id) members.push({ user_id: f.partner_user_id, member_role: 'Partner' });
       if (f.manager_user_id) members.push({ user_id: f.manager_user_id, member_role: 'Manager' });
@@ -129,7 +129,7 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
                 <div className="mb-2 rounded-lg bg-piku-soft/60 px-3 py-2 text-[12.5px] text-ink-soft">
                   <div className="mb-1 flex items-center gap-2"><Sparkles size={13} className="text-piku" /><AiLabel mode={aiMeta.mode} /></div>
                   {aiMeta.rationale}
-                  {aiMeta.sources?.length > 0 && <div className="mt-1 text-[11.5px] text-ink-muted">Based on: {aiMeta.sources.map((s) => s.label).join('; ')}</div>}
+                  {aiMeta.sources?.length > 0 && <div className="mt-1 text-[11.5px] text-ink-muted">Based on: {aiMeta.sources.slice(0, 3).map((s) => s.label).join('; ')}{aiMeta.sources.length > 3 ? ` and ${aiMeta.sources.length - 3} more` : ''}</div>}
                 </div>
               )}
               <StageList stages={plan} onChange={setPlan} />
