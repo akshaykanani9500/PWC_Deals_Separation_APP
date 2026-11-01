@@ -32,18 +32,29 @@ That is all you need. With no `.env` file, the app runs on the local file databa
 
 ### Turn on real AI (Gemini)
 
+**Easiest: paste your key in the app** (same as the course simulations).
+
+1. Sign in as anyone and click the **AI: Offline** button in the top bar.
+2. Paste your Google AI Studio key ([get one free](https://aistudio.google.com/apikey)) and press **Test key**. You should see which Gemini model answered.
+3. Pick a model if you like, then press **Save & use**.
+
+The button turns green (`AI: Gemini · 2.5-flash`), and every AI feature uses the key straight away: Piku, AI suggestions, summaries, email and meeting drafts, and close-out lessons. No restart is needed.
+
+- **Where the key lives:** only in that browser (localStorage). It goes only to this app's own server, in a request header, and the server calls Google for you. It is never written to the database, the Google Sheet, the audit log or the server logs.
+- **Each person sets their own:** the key is per browser, so a teammate on another laptop pastes their own key.
+- **Removing it:** **Remove key** in the same dialog.
+
+**Alternative: a server key in `.env`** (used for everyone when no key is pasted in the browser).
+
 1. Copy `.env.example` to a new file called `.env` in the project folder.
-2. Paste your Google AI Studio key into it:
-   ```
-   GEMINI_API_KEY=your-key-here
-   ```
+2. Add `GEMINI_API_KEY=your-key-here`.
 3. Stop the app (Ctrl+C) and run `npm run dev` again.
 
-Piku's answers to fuller questions (summaries, risks, next steps, anything across areas) will then say `AI-generated · gemini-2.5-flash` instead of `offline`. Quick lookups such as "what is overdue?" are answered by rules on purpose (faster and exact) and show `rules (level 1)`.
+**What you will see:** Piku's answers to fuller questions (summaries, risks, next steps, anything across areas) say `AI-generated · gemini-2.5-flash` instead of `offline`. Quick lookups such as "what is overdue?" are answered by rules on purpose (faster and exact) and show `rules (level 1)`.
 
-If the key is wrong or Google can't be reached, Piku pauses Gemini for a few minutes and answers in offline mode straight away, so the app never hangs.
+If the key is wrong or Google can't be reached, the top-bar button turns red and shows the reason. Gemini pauses for a few minutes and answers come from the offline engine straight away, so the app never hangs.
 
-> The `.env` file is ignored by Git, so your key never goes to GitHub. Never paste a key into any other file.
+> `.env` is ignored by Git, so a server key never goes to GitHub. Never paste a key into any other file.
 > If a key has been shared in a chat or a screenshot, create a new one in Google AI Studio and delete the old one.
 
 ### Useful commands
@@ -100,6 +111,8 @@ The app reads and writes a Google Sheet through a **service account**. A service
 
 You do this setup once, and each teammate uses the same sheet.
 
+> **Why the shared sheet starts empty:** that is on purpose. The app creates the 15 tabs and loads the demo data itself (step 5), so the sheet always matches the current schema. The files in `db/oracle/` are generated SQL scripts for the version 3 move to Oracle; there is no live Oracle database yet.
+
 1. **Create the service account.** Go to [console.cloud.google.com](https://console.cloud.google.com).
    - Create a project (any name).
    - Search for **Google Sheets API** and click **Enable**.
@@ -117,8 +130,10 @@ You do this setup once, and each teammate uses the same sheet.
    GOOGLE_APPLICATION_CREDENTIALS=./credentials/service-account.json
    ```
    The sheet ID is the long part of the sheet URL, between `/d/` and `/edit`.
-5. **Fill the sheet.** Run `npm run db:init-sheets -- --seed`. This creates one tab per table and loads the demo data.
-6. **Start the app.** Run `npm run dev`. The **Data admin** page (sign in as Rahul Verma) should show the driver as **Google Sheets**.
+5. **Fill the sheet, from the app or the terminal.**
+   - **In the app:** restart `npm run dev`, sign in as **Rahul Verma (Platform Admin)** and open **Data admin**. The **Google Sheets database** card shows the service-account email to share with (with a copy button) and anything still missing. Press **Test connection**, then **Create tabs + load demo data**. **Copy current data to the sheet** moves whatever you have been working on locally instead.
+   - **In the terminal:** `npm run db:init-sheets -- --seed`.
+6. **Start the app on the sheet.** Make sure `.env` has `DB_DRIVER=sheets` and restart `npm run dev`. The Data admin page should show the driver as **Google Sheets**.
 
 If the sheet can't be reached, the app does not crash. It prints a warning and uses the local database, so a demo never breaks.
 
@@ -195,7 +210,7 @@ docs/            API contract, data model, Oracle migration
 | Problem | Fix |
 |---|---|
 | `npm run dev` says the port is in use | Another copy is running. Close it, or set `PORT=4001` (API) and/or `WEB_PORT=5174` (web app) in `.env` |
-| Piku says "offline" | No `GEMINI_API_KEY` in `.env`, the key was rejected, or Google is unreachable. Offline answers still work. The Data admin page / `GET /api/ai/status` shows the last Gemini error |
+| Piku says "offline" | No key yet: click the AI button in the top bar and paste one (or set `GEMINI_API_KEY` in `.env`). If the button is red, hover it or open it to see why (key rejected, quota, or no internet). Offline answers still work |
 | Microphone button does nothing | Voice input needs Chrome or Edge and microphone permission. Firefox has no speech recognition |
 | Hindi voice sounds English | Install a Hindi voice in your OS speech settings (Windows: Settings → Time & language → Speech) |
 | "Falling back to local database" | Check `GOOGLE_SHEET_ID`, the key path, and that the sheet is shared with the service-account email |

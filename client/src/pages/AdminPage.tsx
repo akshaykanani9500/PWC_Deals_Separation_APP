@@ -5,6 +5,7 @@ import { useApi } from '../hooks/useApi';
 import { post, getToken } from '../lib/api';
 import { Button, Pill, Skeleton } from '../components/ui';
 import { useToast } from '../components/toast';
+import SheetsSetupCard from '../features/admin/SheetsSetupCard';
 
 interface AiStatus { gemini: boolean; models: string[]; lastModelUsed?: string; lastError?: string; pausedUntil?: string }
 interface DbInfo { driver: string; sheetId?: string | null; schemaVersion: number; tables: { name: string; rows: number }[] }
@@ -40,9 +41,10 @@ export default function AdminPage() {
   return (
     <div className="max-w-5xl">
       <div className="mb-4">
-        <h1 className="font-display text-[26px] font-semibold leading-tight">Data admin</h1>
-        <p className="text-[13px] text-ink-soft">The app keeps every table in one place: a local file database or a Google Sheet (one tab per table). The same layout exports to Oracle.</p>
+        <h1 className="text-[24px] font-semibold leading-tight">Data admin</h1>
+        <p className="text-[13.5px] text-ink-soft">The app keeps every table in one place: a local file database or a Google Sheet (one tab per table). The same layout exports to Oracle.</p>
       </div>
+      <div className="mb-4"><SheetsSetupCard /></div>
       {error && <div className="card mb-4 px-4 py-3 text-rose">{error.message}</div>}
       <div className="grid gap-4 md:grid-cols-3">
         <section className="card p-4 md:col-span-1">

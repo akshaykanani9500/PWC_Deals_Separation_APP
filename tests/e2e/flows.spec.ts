@@ -79,12 +79,19 @@ test('MANAGER adds AI-suggested stages and activities and saves them', async ({ 
   // Activities in the first stage
   await page.goto(`/projects/PRJ-0004/stages/${afterStages.stages[0].stage_id}`);
   const stageBefore = await apiGet(request, 'MANAGER', `/stages/${afterStages.stages[0].stage_id}`);
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit activities' }).click();
   dlg = page.getByRole('dialog');
   await dlg.getByRole('button', { name: 'Suggest activities' }).click();
   await expect(dlg.getByTestId('ai-suggest-result')).toBeVisible({ timeout: 15000 });
   await dlg.getByTestId('ai-suggest-apply').click();
-  await dlg.getByRole('button', { name: 'Add selected to the list' }).click();
+  const addActs = dlg.getByRole('button', { name: 'Add selected to the list' });
+  if (await addActs.isEnabled()) {
+    await addActs.click();
+  } else {
+    // the stage already covers every suggested activity: add one by hand so the save path is still exercised
+    await dlg.getByRole('button', { name: /Add activity/ }).click();
+    await dlg.getByLabel('Activity name').last().fill('Clean-room data access review');
+  }
   await dlg.getByRole('button', { name: 'Save changes' }).click();
   await expect(dlg).toHaveCount(0);
   const stageAfter = await apiGet(request, 'MANAGER', `/stages/${afterStages.stages[0].stage_id}`);

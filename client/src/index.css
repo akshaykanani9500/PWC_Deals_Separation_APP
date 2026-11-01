@@ -5,33 +5,104 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------- Colour tokens (RGB triplets so Tailwind opacity modifiers work) ----------
+   All text/background pairs used together meet WCAG 2.2 AA (4.5:1). */
+:root {
+  --c-canvas: 242 243 245;      /* #F2F3F5 */
+  --c-surface: 255 255 255;
+  --c-sunken: 233 235 239;      /* #E9EBEF */
+  --c-line: 213 217 223;        /* #D5D9DF */
+  --c-line-strong: 176 183 193; /* #B0B7C1 */
+  --c-chrome: 28 32 38;         /* #1C2026 dark workspace bar */
+  --c-chrome-soft: 47 53 62;    /* #2F353E inactive tab */
+  --c-chrome-text: 255 255 255;
+  --c-chrome-muted: 168 175 185;/* #A8AFB9 */
+  --c-ink: 22 25 29;            /* #16191D */
+  --c-ink-soft: 61 67 75;       /* #3D434B */
+  --c-ink-muted: 90 97 107;     /* #5A616B (5.6:1 on canvas) */
+  --c-brand: 184 63 4;          /* #B83F04 primary actions (5.6:1 with white) */
+  --c-brand-dark: 143 48 3;     /* #8F3003 */
+  --c-brand-bright: 226 87 10;  /* #E2570A accents, active indicators */
+  --c-brand-soft: 253 235 221;  /* #FDEBDD */
+  --c-brand-ring: 240 138 75;   /* #F08A4B focus ring */
+  --c-link: 29 95 168;          /* #1D5FA8 text links */
+  --c-link-soft: 228 238 250;
+  --c-rose: 169 42 35;          /* #A92A23 */
+  --c-rose-soft: 251 228 225;
+  --c-amber: 138 92 0;          /* #8A5C00 */
+  --c-amber-soft: 255 243 209;
+  --c-green: 43 106 67;         /* #2B6A43 */
+  --c-green-soft: 225 242 231;
+  --c-blue: 36 84 138;          /* #24548A */
+  --c-blue-soft: 227 237 246;
+  --c-piku: 76 51 184;          /* #4C33B8 */
+  --c-piku-soft: 236 231 253;
+}
+
+/* High-contrast mode (Accessibility menu): darker text, stronger borders, no tinted greys. */
+html.hc {
+  --c-canvas: 255 255 255;
+  --c-sunken: 238 240 243;
+  --c-line: 120 128 138;
+  --c-line-strong: 60 66 74;
+  --c-ink-soft: 22 25 29;
+  --c-ink-muted: 45 50 57;
+  --c-link: 0 64 140;
+  --c-brand: 150 50 0;
+  --c-rose: 140 20 15;
+  --c-amber: 105 68 0;
+  --c-green: 20 80 45;
+  --c-blue: 15 60 115;
+}
+html.hc a { text-decoration-thickness: 2px; }
+
+/* Text size (Accessibility menu). zoom keeps every px-based size in proportion. */
+html[data-text-size='112'] #root { zoom: 1.12; }
+html[data-text-size='125'] #root { zoom: 1.25; }
+
 @layer base {
   html { -webkit-font-smoothing: antialiased; }
-  body { @apply bg-canvas text-ink font-sans text-[13.5px] leading-[1.45]; }
-  :focus-visible { outline: 2px solid theme('colors.brand.ring'); outline-offset: 2px; }
-  ::selection { background: theme('colors.brand.soft'); }
+  body { @apply bg-canvas text-ink font-sans text-[14px] leading-[1.5]; }
+  :focus-visible { outline: 2px solid rgb(var(--c-brand-ring)); outline-offset: 2px; border-radius: 4px; }
+  ::selection { background: rgb(var(--c-brand-soft)); }
   input, select, textarea { font: inherit; }
+  h1, h2, h3, h4 { letter-spacing: -0.005em; }
 }
 
 @layer components {
   .num { @apply font-mono tabular-nums; }
+  /* Read-only surface: flat. Interactive surface: .card-action (raises on hover). */
   .card { @apply bg-surface border border-line rounded-xl shadow-card; }
-  .input {
-    @apply w-full rounded-md border border-line bg-surface px-2.5 py-1.5 text-[13px] text-ink placeholder:text-ink-muted
-      focus:border-brand-ring focus:outline-none focus:ring-2 focus:ring-brand-soft disabled:bg-sunken disabled:text-ink-muted;
+  .card-action {
+    @apply bg-surface border border-line rounded-xl shadow-card cursor-pointer transition-[box-shadow,border-color,transform]
+      hover:border-line-strong hover:shadow-raise focus-visible:shadow-raise;
   }
-  .label { @apply mb-1 block text-[12px] font-medium text-ink-soft; }
-  .th { @apply sticky top-0 z-[1] bg-sunken px-3 py-2 text-left text-[12px] font-medium text-ink-soft whitespace-nowrap; }
-  .td { @apply border-t border-line px-3 py-2 align-middle; }
+  .input {
+    @apply w-full min-h-[32px] rounded-md border border-line-strong/70 bg-surface px-2.5 py-1.5 text-[13.5px] text-ink placeholder:text-ink-muted
+      focus:border-brand-ring focus:outline-none focus:ring-2 focus:ring-brand-soft disabled:bg-sunken disabled:text-ink-muted disabled:border-line;
+  }
+  .label { @apply mb-1 block text-[12.5px] font-medium text-ink-soft; }
+  .th { @apply sticky top-0 z-[1] bg-sunken px-3 py-2 text-left text-[12.5px] font-semibold text-ink-soft whitespace-nowrap; }
+  .td { @apply border-t border-line px-3 py-2.5 align-middle; }
   .skeleton { @apply animate-pulse rounded bg-sunken; }
+  /* Text link: always looks like a link (colour + underline on hover). */
+  .link { @apply font-medium text-link underline-offset-2 decoration-link/40 hover:underline cursor-pointer; }
+  /* Clickable table row: hover background, pointer, chevron reveals. */
+  .row-action { @apply cursor-pointer transition-colors hover:bg-link-soft/50 focus-within:bg-link-soft/40; }
+  .row-action .row-chevron { @apply text-ink-muted transition-transform; }
+  .row-action:hover .row-chevron { @apply translate-x-0.5 text-link; }
+  .eyebrow { @apply text-[12px] font-medium text-ink-muted; }
 }
 
 /* react-grid-layout: calm placeholder colour */
-.react-grid-item.react-grid-placeholder { background: theme('colors.brand.soft'); opacity: 0.7; border-radius: 14px; }
-.react-grid-item > .react-resizable-handle::after { border-color: theme('colors.ink.muted'); }
+.react-grid-item.react-grid-placeholder { background: rgb(var(--c-brand-soft)); opacity: 0.7; border-radius: 12px; }
+.react-grid-item > .react-resizable-handle::after { border-color: rgb(var(--c-ink-muted)); }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after {
+  animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important;
 }
 
 /* While a side panel is open, Piku's bubble moves to the bottom-left so it never covers panel buttons. */
@@ -39,3 +110,6 @@ body[data-sidepanel='open'] .piku-bubble {
   right: auto;
   left: 1.5rem;
 }
+
+/* Board drag feedback */
+.drop-target { outline: 2px dashed rgb(var(--c-link)); outline-offset: -4px; background: rgb(var(--c-link-soft) / 0.6); }

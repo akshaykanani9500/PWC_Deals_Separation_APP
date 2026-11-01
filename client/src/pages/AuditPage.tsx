@@ -29,7 +29,7 @@ export default function AuditPage() {
   return (
     <div>
       <div className="mb-4">
-        <h1 className="font-display text-[26px] font-semibold leading-tight">Audit log</h1>
+        <h1 className="text-[26px] font-semibold leading-tight">Audit log</h1>
         <p className="text-[13px] text-ink-soft">Who did what, when. Includes AI actions and refused access attempts, so any decision can be rebuilt.</p>
       </div>
       <section className="card overflow-hidden">

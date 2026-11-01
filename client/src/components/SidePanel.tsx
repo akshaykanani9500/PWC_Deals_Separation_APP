@@ -59,7 +59,7 @@ export function SidePanel({ open, onClose, title, subtitle, headerRight, childre
       >
         <header className="flex items-start gap-3 border-b border-line px-5 py-4">
           <div className="min-w-[200px] flex-1">
-            <h2 className="font-display text-[19px] font-semibold leading-tight text-ink">{title}</h2>
+            <h2 className="text-[19px] font-semibold leading-tight text-ink">{title}</h2>
             {subtitle && <div className="mt-1 text-[12.5px] text-ink-muted">{subtitle}</div>}
           </div>
           {headerRight && <div className="flex shrink-0 items-start">{headerRight}</div>}

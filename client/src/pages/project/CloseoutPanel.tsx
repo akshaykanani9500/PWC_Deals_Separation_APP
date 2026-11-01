@@ -103,7 +103,7 @@ export default function CloseoutPanel({ open, detail, onClose, onClosed }: { ope
             <ul className={`space-y-1.5 ${consent !== 'Granted' ? 'pointer-events-none opacity-40' : ''}`}>
               {items.map((it, i) => (
                 <li key={i} className="flex items-start gap-2 rounded-md border border-line px-2.5 py-2">
-                  <input type="checkbox" className="mt-0.5 h-3.5 w-3.5 accent-[#D04A02]" checked={it.pick} onChange={(e) => setItems((s) => s.map((x, j) => (j === i ? { ...x, pick: e.target.checked } : x)))} aria-label={`Share ${it.title}`} />
+                  <input type="checkbox" className="mt-0.5 h-3.5 w-3.5 accent-[#B83F04]" checked={it.pick} onChange={(e) => setItems((s) => s.map((x, j) => (j === i ? { ...x, pick: e.target.checked } : x)))} aria-label={`Share ${it.title}`} />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2"><span className="text-[13px] font-medium">{it.title}</span><Pill>{it.item_type}</Pill>{it.stage_name && <span className="text-[11.5px] text-ink-muted">{it.stage_name}</span>}</div>
                     {it.body && <p className="mt-0.5 line-clamp-2 text-[12px] text-ink-soft">{it.body}</p>}

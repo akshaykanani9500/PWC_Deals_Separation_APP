@@ -6,7 +6,8 @@ import type { Lang, PikuRequest, SuggestRequest, ChatMessage } from '../../../sh
 import { answerPiku } from '../ai/piku';
 import { suggest } from '../ai/suggest';
 import { summarize, draftEmail, suggestMeeting, type ScopeKind } from '../ai/summary';
-import { geminiStatus } from '../ai/gemini';
+import { geminiStatus, testGeminiKey, listGeminiModels, geminiKey } from '../ai/gemini';
+import { validKey, validModel, currentRequestAi } from '../ai/requestAi';
 
 const SCOPES: ScopeKind[] = ['project', 'stage', 'activity', 'task'];
 const KINDS = ['project', 'stages', 'stage', 'activities', 'activity', 'tasks', 'task'];
@@ -40,6 +41,26 @@ export function createAiRouter(db: Db): Router {
   const r = Router();
 
   r.get('/status', route(null, async () => geminiStatus()));
+
+  /** In-app "Test key" (AI settings dialog). Body key optional: falls back to the header key, then the server key. */
+  r.post('/test-key', route(null, async (req) => {
+    const { key, model } = (req.body ?? {}) as { key?: unknown; model?: unknown };
+    if (key !== undefined && key !== '' && !validKey(key)) throw bad('That does not look like a Google AI key (letters, digits, . _ - only, 20-200 characters).');
+    if (model !== undefined && model !== '' && !validModel(model)) throw bad('Invalid model name');
+    const k = (typeof key === 'string' && key.trim()) || geminiKey();
+    if (!k) return { ok: false, latencyMs: 0, error: 'No key to test. Paste a Google AI Studio key first.' };
+    const m = (typeof model === 'string' && model.trim()) || currentRequestAi().model || undefined;
+    return testGeminiKey(k.trim(), m);
+  }));
+
+  /** Models the active key can use (falls back to the default list). */
+  r.get('/models', route(null, async () => listGeminiModels(geminiKey())));
+  /** Same, for a key typed in the dialog but not saved yet. */
+  r.post('/models', route(null, async (req) => {
+    const { key } = (req.body ?? {}) as { key?: unknown };
+    if (key !== undefined && key !== '' && !validKey(key)) throw bad('That does not look like a Google AI key.');
+    return listGeminiModels((typeof key === 'string' && key.trim()) || geminiKey());
+  }));
 
   r.post('/piku', route(['piku.use'], async (req) => {
     const body = req.body as PikuRequest;

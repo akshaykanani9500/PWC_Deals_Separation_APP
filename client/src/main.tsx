@@ -4,10 +4,12 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { SessionProvider } from './lib/session';
 import { ToastProvider } from './components/toast';
+import { PrefsProvider } from './lib/prefs';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
+    <PrefsProvider>
     <BrowserRouter>
       <SessionProvider>
         <ToastProvider>
@@ -15,5 +17,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         </ToastProvider>
       </SessionProvider>
     </BrowserRouter>
+    </PrefsProvider>
   </React.StrictMode>,
 );

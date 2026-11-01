@@ -51,7 +51,7 @@ function RowShell({ depth, include, onToggle, children, onRemove, count, open, o
           <ChevronRight size={14} className={clsx('transition-transform', open && 'rotate-90')} />
         </button>
       ) : <span className="w-[18px]" />}
-      <input type="checkbox" className="h-3.5 w-3.5 accent-[#D04A02]" checked={include} onChange={(e) => onToggle(e.target.checked)} aria-label="Include" />
+      <input type="checkbox" className="h-3.5 w-3.5 accent-[#B83F04]" checked={include} onChange={(e) => onToggle(e.target.checked)} aria-label="Include" />
       <div className="min-w-0 flex-1">{children}</div>
       {count !== undefined && <span className="num shrink-0 text-[11px] text-ink-muted">{count}</span>}
       <button onClick={onRemove} className="rounded p-0.5 text-ink-muted opacity-0 hover:text-rose group-hover:opacity-100 focus:opacity-100" aria-label="Remove row"><Trash2 size={13} /></button>

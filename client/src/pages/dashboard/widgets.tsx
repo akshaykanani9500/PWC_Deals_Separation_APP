@@ -1,19 +1,29 @@
 /** Dashboard widget catalogue. Each widget renders from DashboardData. */
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { ChevronRight } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { DashboardData } from '@shared/types';
 import { money, pct, num, date, relative, isOverdue } from '../../lib/format';
 import { Pill } from '../../components/ui';
 
 export const CHART = {
-  ink: '#1D1B19', soft: '#4A4642', muted: '#7A746C', line: '#E3DED6', brand: '#D04A02',
-  blue: '#2C5F8A', green: '#2F7D4F', amber: '#C98A00', rose: '#C8312A', piku: '#5B3FD0', sand: '#B9AE9F',
+  ink: '#16191D', soft: '#3D434B', muted: '#5A616B', line: '#D5D9DF', brand: '#B83F04',
+  blue: '#2F6BAD', green: '#3B8A5A', amber: '#C98A00', rose: '#C0392B', piku: '#5B3FD0', sand: '#9AA3AE', track: '#E9EBEF',
 };
 const STATUS_COLORS: Record<string, string> = {
   Planning: CHART.sand, Active: CHART.blue, 'At Risk': CHART.rose, 'On Hold': CHART.amber, Closing: CHART.piku, Closed: CHART.green,
 };
 const RAG_COLORS: Record<string, string> = { Green: CHART.green, Amber: CHART.amber, Red: CHART.rose };
+
+/** Quick filters a KPI tile can apply to the projects table. */
+export type QuickFilter = 'active' | 'risk' | 'overdue' | 'open' | 'blocked' | 'behind';
+export const QUICK_LABEL: Record<QuickFilter, string> = {
+  active: 'Active projects', risk: 'At-risk projects', overdue: 'Projects with overdue tasks', open: 'Projects with open tasks',
+  blocked: 'Projects with blocked tasks', behind: 'Least complete first',
+};
+
+export interface WidgetCtx { onFilter: (f: QuickFilter) => void; userName?: string; customizing: boolean }
 
 export interface WidgetDef {
   id: string;
@@ -21,17 +31,26 @@ export interface WidgetDef {
   description: string;
   w: number; h: number; minW?: number; minH?: number;
   finance?: boolean;
-  render: (d: DashboardData, users: Map<string, string>) => ReactNode;
+  render: (d: DashboardData, users: Map<string, string>, ctx: WidgetCtx) => ReactNode;
 }
 
-function Kpi({ value, label, note, tone }: { value: ReactNode; label: string; note?: ReactNode; tone?: 'rose' | 'amber' | 'green' }) {
+function Kpi({ value, label, note, tone, onClick, action }: {
+  value: ReactNode; label: string; note?: ReactNode; tone?: 'rose' | 'amber' | 'green'; onClick?: () => void; action?: string;
+}) {
   const color = tone === 'rose' ? 'text-rose' : tone === 'amber' ? 'text-amber' : tone === 'green' ? 'text-green' : 'text-ink';
+  const body = (
+    <>
+      <span className="flex items-center justify-between gap-2 text-[13px] font-medium text-ink-soft">{label}
+        {onClick && <ChevronRight size={15} className="shrink-0 text-ink-muted transition-transform group-hover:translate-x-0.5 group-hover:text-link" aria-hidden />}</span>
+      <span className={`num text-[28px] font-semibold leading-none ${color}`}>{value}</span>
+      <span className="truncate text-[12px] text-ink-muted group-hover:text-link">{onClick && action ? action : note ?? '\u00a0'}</span>
+    </>
+  );
+  if (!onClick) return <div className="flex h-full flex-col justify-between p-4">{body}</div>;
   return (
-    <div className="flex h-full flex-col justify-between">
-      <span className="text-[12px] text-ink-soft">{label}</span>
-      <span className={`num text-[28px] font-medium leading-none ${color}`}>{value}</span>
-      <span className="truncate text-[11.5px] text-ink-muted">{note ?? ' '}</span>
-    </div>
+    <button type="button" onClick={onClick} title={action} className="group flex h-full w-full flex-col justify-between rounded-xl p-4 text-left transition-colors hover:bg-link-soft/40">
+      {body}
+    </button>
   );
 }
 
@@ -39,23 +58,23 @@ const tooltipStyle = { fontSize: 12, borderRadius: 8, border: `1px solid ${CHART
 
 export const WIDGETS: WidgetDef[] = [
   { id: 'kpi-active', title: 'Active projects', description: 'Projects that are not closed', w: 2, h: 2, minW: 2, minH: 2,
-    render: (d) => <Kpi label="Active projects" value={num(d.kpis.activeProjects)} note="Visible to you" /> },
+    render: (d, _u, c) => <Kpi label="Active projects" value={num(d.kpis.activeProjects)} note="Visible to you" action="Show active projects" onClick={c.customizing ? undefined : () => c.onFilter('active')} /> },
   { id: 'kpi-risk', title: 'At risk', description: 'Projects marked At Risk or red', w: 2, h: 2, minW: 2, minH: 2,
-    render: (d) => <Kpi label="At risk" value={num(d.kpis.atRisk)} tone={d.kpis.atRisk ? 'rose' : undefined} note="Status or RAG red" /> },
+    render: (d, _u, c) => <Kpi label="At risk" value={num(d.kpis.atRisk)} tone={d.kpis.atRisk ? 'rose' : undefined} note="Status or RAG red" action="Show at-risk projects" onClick={c.customizing ? undefined : () => c.onFilter('risk')} /> },
   { id: 'kpi-completion', title: 'Average completion', description: 'Rolled up from activities', w: 2, h: 2, minW: 2, minH: 2,
-    render: (d) => <Kpi label="Average completion" value={pct(d.kpis.avgCompletion)} note="Rolled up from tasks" /> },
+    render: (d, _u, c) => <Kpi label="Average completion" value={pct(d.kpis.avgCompletion)} note="Rolled up from tasks" action="Sort by least complete" onClick={c.customizing ? undefined : () => c.onFilter('behind')} /> },
   { id: 'kpi-open', title: 'Open tasks', description: 'Tasks not done', w: 2, h: 2, minW: 2, minH: 2,
-    render: (d) => <Kpi label="Open tasks" value={num(d.kpis.openTasks)} note={`${num(d.kpis.blockedTasks)} blocked`} /> },
+    render: (d, _u, c) => <Kpi label="Open tasks" value={num(d.kpis.openTasks)} note={`${num(d.kpis.blockedTasks)} blocked`} action={`${num(d.kpis.blockedTasks)} blocked: show projects`} onClick={c.customizing ? undefined : () => c.onFilter(d.kpis.blockedTasks ? 'blocked' : 'open')} /> },
   { id: 'kpi-overdue', title: 'Overdue tasks', description: 'Past due and not done', w: 2, h: 2, minW: 2, minH: 2,
-    render: (d) => <Kpi label="Overdue tasks" value={num(d.kpis.overdueTasks)} tone={d.kpis.overdueTasks ? 'amber' : 'green'} note="Past due date" /> },
+    render: (d, _u, c) => <Kpi label="Overdue tasks" value={num(d.kpis.overdueTasks)} tone={d.kpis.overdueTasks ? 'amber' : 'green'} note="Past due date" action="Show projects with overdue tasks" onClick={c.customizing ? undefined : () => c.onFilter('overdue')} /> },
   { id: 'kpi-day1', title: 'Day-1 critical open', description: 'Day-1 critical items still open', w: 2, h: 2, minW: 2, minH: 2,
     render: (d) => <Kpi label="Day-1 critical open" value={num(d.kpis.day1CriticalOpen)} tone={d.kpis.day1CriticalOpen ? 'rose' : 'green'} note="Must be done before close" /> },
   { id: 'fin-fees', title: 'Fees: budget vs billed', description: 'PwC fee budget and billed to date', w: 4, h: 2, minW: 3, minH: 2, finance: true,
     render: (d) => {
       const b = d.kpis.feeBudget ?? 0; const f = d.kpis.feeBilled ?? 0; const share = b ? Math.min(100, (f / b) * 100) : 0;
       return (
-        <div className="flex h-full flex-col justify-between">
-          <span className="text-[12px] text-ink-soft">Fees billed against budget</span>
+        <div className="flex h-full flex-col justify-between p-4">
+          <span className="text-[13px] font-medium text-ink-soft">Fees billed against budget</span>
           <div className="flex items-baseline gap-2"><span className="num text-[24px] font-medium leading-none">{money(f)}</span><span className="num text-[13px] text-ink-muted">of {money(b)}</span></div>
           <div className="h-1.5 overflow-hidden rounded-full bg-sunken"><div className="h-full rounded-full bg-brand" style={{ width: `${share}%` }} /></div>
         </div>
@@ -84,21 +103,21 @@ export const WIDGETS: WidgetDef[] = [
           <CartesianGrid vertical={false} stroke={CHART.line} />
           <XAxis dataKey="rag" tick={{ fontSize: 12, fill: CHART.soft }} axisLine={false} tickLine={false} />
           <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: CHART.muted }} axisLine={false} tickLine={false} />
-          <Tooltip contentStyle={tooltipStyle} cursor={{ fill: '#EFECE7' }} />
+          <Tooltip contentStyle={tooltipStyle} cursor={{ fill: '#E9EBEF' }} />
           <Bar dataKey="count" name="Projects" radius={[4, 4, 0, 0]} maxBarSize={44}>
             {d.byRag.map((r) => <Cell key={r.rag} fill={RAG_COLORS[r.rag] ?? CHART.sand} />)}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
     ) },
-  { id: 'chart-stage', title: 'Projects by current stage', description: 'Where each project sits now', w: 6, h: 5, minW: 4, minH: 4,
+  { id: 'chart-stage', title: 'Projects by current stage', description: 'Where each project sits now', w: 12, h: 4, minW: 4, minH: 4,
     render: (d) => (
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={d.byStage} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
           <CartesianGrid horizontal={false} stroke={CHART.line} />
           <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: CHART.muted }} axisLine={false} tickLine={false} />
           <YAxis type="category" dataKey="stage" width={110} tick={{ fontSize: 12, fill: CHART.soft }} axisLine={false} tickLine={false} />
-          <Tooltip contentStyle={tooltipStyle} cursor={{ fill: '#EFECE7' }} />
+          <Tooltip contentStyle={tooltipStyle} cursor={{ fill: '#E9EBEF' }} />
           <Bar dataKey="count" name="Projects" fill={CHART.soft} radius={[0, 4, 4, 0]} maxBarSize={16} />
         </BarChart>
       </ResponsiveContainer>
@@ -125,7 +144,7 @@ export const WIDGETS: WidgetDef[] = [
           <li key={t.task_id} className="flex items-center gap-3 px-1 py-1.5">
             <span className={`num w-14 shrink-0 text-[12px] ${isOverdue(t.due_date, t.status) ? 'font-medium text-rose' : 'text-ink-soft'}`}>{date(t.due_date, false)}</span>
             <span className="min-w-0 flex-1">
-              <Link to={`/projects/${t.project_id}?task=${t.task_id}`} className="block truncate text-[13px] hover:text-brand">{t.title}</Link>
+              <Link to={`/projects/${t.project_id}?task=${t.task_id}`} className="link block truncate text-[13.5px]">{t.title}</Link>
               <span className="block truncate text-[11.5px] text-ink-muted">{t.code_name}{t.assignee_name ? `, ${t.assignee_name}` : ''}</span>
             </span>
             <Pill>{t.status}</Pill>
@@ -133,12 +152,41 @@ export const WIDGETS: WidgetDef[] = [
         ))}
       </ul>
     ) : <p className="text-[12.5px] text-ink-muted">Nothing due soon.</p> },
+  { id: 'list-mywork', title: 'My work', description: 'Your open tasks that are due soon', w: 6, h: 6, minW: 4, minH: 4,
+    render: (d, _u, c) => {
+      const mine = d.upcoming.filter((t) => t.assignee_name && t.assignee_name === c.userName);
+      const list = mine.length ? mine : d.upcoming.slice(0, 5);
+      return (
+        <div>
+          {!mine.length && <p className="mb-1.5 text-[12.5px] text-ink-muted">Nothing assigned to you is due soon. Here is what is due next across your projects.</p>}
+          <ul className="-mx-1 divide-y divide-line">
+            {list.map((t) => {
+              const late = isOverdue(t.due_date, t.status);
+              return (
+                <li key={t.task_id}>
+                  <Link to={`/projects/${t.project_id}?task=${t.task_id}`} className="group flex items-center gap-3 rounded-md px-1 py-2 hover:bg-link-soft/40">
+                    <span className={`num w-14 shrink-0 text-[12.5px] ${late ? 'font-medium text-rose' : 'text-ink-soft'}`}>{date(t.due_date, false)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13.5px] font-medium text-link group-hover:underline">{t.title}</span>
+                      <span className="block truncate text-[12px] text-ink-muted">{t.code_name}{late ? ', overdue' : ''}</span>
+                    </span>
+                    <Pill>{t.status}</Pill>
+                    <ChevronRight size={15} className="shrink-0 text-ink-muted group-hover:text-link" aria-hidden />
+                  </Link>
+                </li>
+              );
+            })}
+            {!list.length && <li className="py-2 text-[12.5px] text-ink-muted">You are all caught up.</li>}
+          </ul>
+        </div>
+      );
+    } },
   { id: 'list-activity', title: 'Recent activity', description: 'Latest changes and AI actions', w: 6, h: 6, minW: 4, minH: 4,
     render: (d, users) => d.recentActivity.length ? (
       <ul className="-mx-1 divide-y divide-line">
         {d.recentActivity.map((a) => (
           <li key={a.audit_id} className="flex items-start gap-3 px-1 py-1.5">
-            <span className="mt-[3px] h-1.5 w-1.5 shrink-0 rounded-full bg-ink-muted" />
+            <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-ink-muted" aria-hidden />
             <span className="min-w-0 flex-1 text-[12.5px]">
               <span className="font-medium">{users.get(a.actor_user_id ?? '') ?? a.persona_code ?? 'System'}</span>{' '}
               <span className="text-ink-soft">{humanAction(a.action)}</span>{' '}
@@ -168,5 +216,5 @@ export function humanAction(action: string): string {
 
 export const DEFAULT_LAYOUT_IDS = [
   'kpi-active', 'kpi-risk', 'kpi-completion', 'kpi-open', 'kpi-overdue', 'kpi-day1',
-  'fin-fees', 'fin-tsa', 'fin-gap', 'chart-status', 'chart-rag', 'chart-stage', 'list-upcoming', 'list-activity', 'chart-finance',
+  'fin-fees', 'fin-tsa', 'fin-gap', 'list-mywork', 'list-upcoming', 'chart-status', 'chart-rag', 'list-activity', 'chart-stage', 'chart-finance',
 ];

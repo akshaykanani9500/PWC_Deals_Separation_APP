@@ -10,6 +10,7 @@ import { audit } from '../services/audit';
 import { config } from '../config';
 import { generateDdl, generateInserts } from '../db/oracle';
 import { buildWorkbook } from '../db/xlsx';
+import { initSheets, sheetsStatus } from '../services/sheetsSetup';
 
 async function dump(db: Db) {
   const data: Record<string, any[]> = {};
@@ -40,6 +41,20 @@ export function adminRouter(db: Db): Router {
   r.get('/db', ah(async (_req, res) => {
     const counts = await db.counts();
     res.json({ driver: db.driver, sheetId: db.driver === 'sheets' ? config.googleSheetId : undefined, schemaVersion: SCHEMA_VERSION, tables: TABLES.map((t) => ({ name: t.name, rows: counts[t.name] ?? 0 })) });
+  }));
+
+  /** Google Sheets setup card: what is configured, what is missing, optional live connection test (?test=1). */
+  r.get('/sheets/status', ah(async (req, res) => {
+    res.json(await sheetsStatus(db, { test: req.query.test === '1' || req.query.test === 'true' }));
+  }));
+
+  /** Create tabs (+ optionally load demo data or copy the current data) in the configured Google Sheet. */
+  r.post('/sheets/init', ah(async (req, res) => {
+    const { seed, source } = (req.body ?? {}) as { seed?: unknown; source?: unknown };
+    const src = source === 'current' ? 'current' : 'demo';
+    const out = await initSheets(db, { seed: seed === true, source: src });
+    await audit(db, (req as AuthedRequest).auth, 'admin.sheets.init', { details: { seed: out.seeded, source: out.source } });
+    res.json(out);
   }));
 
   r.post('/db/reload', ah(async (req, res) => {

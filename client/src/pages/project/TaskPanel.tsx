@@ -282,7 +282,7 @@ export function AddTaskPanel({ open, onClose, activity, onSaved }: { open: boole
           <ul className="space-y-1">
             {ideas.map((i, idx) => (
               <li key={idx} className="flex items-center gap-2">
-                <input type="checkbox" className="h-3.5 w-3.5 accent-[#D04A02]" checked={i.pick} onChange={(e) => setIdeas((s) => s.map((x, j) => (j === idx ? { ...x, pick: e.target.checked } : x)))} aria-label="Include task" />
+                <input type="checkbox" className="h-3.5 w-3.5 accent-[#B83F04]" checked={i.pick} onChange={(e) => setIdeas((s) => s.map((x, j) => (j === idx ? { ...x, pick: e.target.checked } : x)))} aria-label="Include task" />
                 <input className="input py-1" value={i.title} onChange={(e) => setIdeas((s) => s.map((x, j) => (j === idx ? { ...x, title: e.target.value } : x)))} aria-label="Task title" />
                 {i.day1_critical === 'Y' && <Pill tone="bg-rose-soft text-rose">Day-1</Pill>}
                 {i.priority && <Pill>{i.priority}</Pill>}
