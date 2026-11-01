@@ -10,17 +10,19 @@ import clsx from 'clsx';
 import { getAiSettings, post, setAiSettings } from '../../lib/api';
 import { refreshAiStatus, useAiStatus } from './AiStatusButton';
 
-const DEFAULT_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+const DEFAULT_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview', 'gemini-2.5-flash'];
+/** Models Google has shut down: never offer them, even if an old setting saved one. */
+const RETIRED = /^(gemini-1\.0|gemini-1\.5|gemini-pro$|gemini-2\.0)/i;
 const KEY_RE = /^[A-Za-z0-9._-]{20,200}$/;
 
-interface TestResult { ok: boolean; model?: string; latencyMs: number; error?: string }
+interface TestResult { ok: boolean; model?: string; latencyMs: number; error?: string; availableModels?: string[]; tried?: { model: string; result: string }[] }
 interface ModelsResult { models: { name: string; displayName: string }[]; source: 'google' | 'default' }
 
 export default function AiSettingsModal({ onClose }: { onClose: () => void }) {
   const saved = getAiSettings();
   const { status } = useAiStatus();
   const [key, setKey] = useState(saved.key);
-  const [model, setModel] = useState(saved.model || DEFAULT_MODELS[0]);
+  const [model, setModel] = useState(saved.model && !RETIRED.test(saved.model) ? saved.model : DEFAULT_MODELS[0]);
   const [show, setShow] = useState(false);
   const [models, setModels] = useState<string[]>(DEFAULT_MODELS);
   const [testing, setTesting] = useState(false);
@@ -58,7 +60,9 @@ export default function AiSettingsModal({ onClose }: { onClose: () => void }) {
     try {
       const r = await post<TestResult>('/ai/test-key', { key: trimmed || undefined, model });
       setResult(r);
-      if (r.ok) void loadModels(trimmed || undefined);
+      if (r.availableModels?.length) setModels(r.availableModels);
+      // Switch to the model that actually answered, so "Save & use" stores a working one.
+      if (r.ok && r.model) setModel(r.model);
     } catch (e: any) {
       setResult({ ok: false, latencyMs: 0, error: e?.message ?? 'Test failed' });
     } finally { setTesting(false); }
@@ -133,14 +137,26 @@ export default function AiSettingsModal({ onClose }: { onClose: () => void }) {
               className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-[13px] text-ink outline-none focus:border-piku focus:ring-2 focus:ring-piku/30">
               {models.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
-            <p className="mt-1 text-[12px] text-ink-muted">If this model is busy, the app automatically tries the next one.</p>
+            <p className="mt-1 text-[12px] text-ink-muted">This list comes from Google for your key. If the chosen model is busy or not allowed, the app automatically uses the next one that works.</p>
           </div>
 
           {result && (
             <div role="status" data-testid="ai-test-result"
               className={clsx('flex items-start gap-2 rounded-lg border px-3 py-2.5 text-[13px]', result.ok ? 'border-green/30 bg-green-soft text-green' : 'border-rose/30 bg-rose-soft text-rose')}>
               {result.ok ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" aria-hidden /> : <XCircle size={16} className="mt-0.5 shrink-0" aria-hidden />}
-              <span>{result.ok ? <>Key works. <b>{result.model}</b> answered in {(result.latencyMs / 1000).toFixed(1)}s.</> : result.error}</span>
+              <div className="min-w-0">
+                <p>{result.ok
+                  ? <>Key works. <b>{result.model}</b> answered in {(result.latencyMs / 1000).toFixed(1)}s{model === result.model ? ' and is now selected' : ''}. Press <b>Save &amp; use</b>.</>
+                  : result.error}</p>
+                {result.tried && result.tried.length > 1 && (
+                  <ul className="mt-1.5 space-y-0.5 text-[12px] text-ink-soft" data-testid="ai-test-tried">
+                    {result.tried.map((t) => <li key={t.model}><span className="font-mono">{t.model}</span>: {t.result}</li>)}
+                  </ul>
+                )}
+                {!result.ok && result.availableModels && result.availableModels.length > 0 && (
+                  <p className="mt-1.5 text-[12px] text-ink-soft">Models your key can use: {result.availableModels.slice(0, 8).join(', ')}</p>
+                )}
+              </div>
             </div>
           )}
           {savedMsg && <p role="status" className="text-[13px] font-medium text-green" data-testid="ai-saved-msg">{savedMsg}</p>}

@@ -32,7 +32,7 @@ async function main() {
 
   const server = app.listen(config.port, () => {
     console.log(`\n  Deals Separation Hub API  ->  http://localhost:${config.port}/api/health`);
-    console.log(`  Database: ${db.driver} | AI: ${config.geminiApiKey ? 'Gemini (' + config.geminiModels[0] + ')' : 'offline until a key is added (AI button in the top bar, or GEMINI_API_KEY in .env)'}\n`);
+    console.log(`  Database: ${db.driver} | AI: ${config.geminiApiKey ? 'Gemini (model picked automatically from what your key can use)' : 'offline until a key is added (AI button in the top bar, or GEMINI_API_KEY in .env)'}\n`);
   });
   server.on('error', (e: NodeJS.ErrnoException) => {
     if (e.code === 'EADDRINUSE') {

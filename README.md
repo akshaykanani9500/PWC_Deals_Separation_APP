@@ -50,7 +50,9 @@ The button turns green (`AI: Gemini · 2.5-flash`), and every AI feature uses th
 2. Add `GEMINI_API_KEY=your-key-here`.
 3. Stop the app (Ctrl+C) and run `npm run dev` again.
 
-**What you will see:** Piku's answers to fuller questions (summaries, risks, next steps, anything across areas) say `AI-generated · gemini-2.5-flash` instead of `offline`. Quick lookups such as "what is overdue?" are answered by rules on purpose (faster and exact) and show `rules (level 1)`.
+**Which model is used:** you don't need to pick one. On **Test key** the app asks Google which models *your* key may call and uses the best one: `gemini-3.8-flash`, then `3.6-flash`, `3.5-flash`, `3.5-flash-lite`, `3.1-flash-lite` and so on. Retired models (`gemini-1.5-*`, `gemini-2.0-*`) are never called. `gemini-2.5-flash` is skipped automatically when Google limits it to earlier users, as it does for new keys. A model that hits its free-tier limit is skipped for a minute. New Google AI Studio keys start with `AQ.`; that format works.
+
+**What you will see:** Piku's answers to fuller questions (summaries, risks, next steps, anything across areas) say `AI-generated · gemini-3.8-flash` (or whichever model your key can use) instead of `offline`. Quick lookups such as "what is overdue?" are answered by rules on purpose (faster and exact) and show `rules (level 1)`.
 
 If the key is wrong or Google can't be reached, the top-bar button turns red and shows the reason. Gemini pauses for a few minutes and answers come from the offline engine straight away, so the app never hangs.
 
@@ -210,6 +212,8 @@ docs/            API contract, data model, Oracle migration
 | Problem | Fix |
 |---|---|
 | `npm run dev` says the port is in use | Another copy is running. Close it, or set `PORT=4001` (API) and/or `WEB_PORT=5174` (web app) in `.env` |
+| Test key says a model is "not available for this key" | Normal for new keys: Google has shut down 1.5/2.0 and limits 2.5 to earlier users. The test already moves on to a model that works and selects it; press **Save & use**. If your `.env` has an old `GEMINI_MODELS=gemini-2.5-flash,gemini-2.0-flash,gemini-1.5-flash` line, delete it (the app ignores retired names anyway) |
+| Test key says "free-tier quota reached" | You hit the free per-minute limit. Wait a minute, or the app uses another model meanwhile |
 | Piku says "offline" | No key yet: click the AI button in the top bar and paste one (or set `GEMINI_API_KEY` in `.env`). If the button is red, hover it or open it to see why (key rejected, quota, or no internet). Offline answers still work |
 | Microphone button does nothing | Voice input needs Chrome or Edge and microphone permission. Firefox has no speech recognition |
 | Hindi voice sounds English | Install a Hindi voice in your OS speech settings (Windows: Settings → Time & language → Speech) |

@@ -11,21 +11,43 @@
 
 import { currentRequestAi, keyFingerprint } from './requestAi';
 
-const DEFAULT_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
-const TIMEOUT_MS = 20_000;
+/**
+ * Preferred text models, best first (Gemini API, Nov 2026). The list is only a preference order:
+ * at run time the app asks Google which models THIS key can call (ListModels) and skips the rest,
+ * so new free-tier keys (incl. the new "AQ." auth keys) work without editing anything.
+ */
+export const DEFAULT_MODELS = [
+  'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite', 'gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.5-flash-lite',
+];
+/** Shut down by Google - never call them even if an old .env or browser setting still lists them. */
+const RETIRED = /^(gemini-1\.0|gemini-1\.5|gemini-pro$|gemini-pro-vision|gemini-2\.0|gemini-exp|gemini-2\.5-(pro|flash)(-lite)?-preview|gemini-3-pro-preview|gemini-3\.1-flash-lite-preview)/i;
+export function isRetiredModel(m: string): boolean { return RETIRED.test(m.trim()); }
 
-const TOTAL_BUDGET_MS = 25_000;
+const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
+const TIMEOUT_MS = 25_000;
+
+const TOTAL_BUDGET_MS = 40_000;
 const KEY_COOLDOWN_MS = 5 * 60_000;   // bad / unauthorised key
 const NET_COOLDOWN_MS = 60_000;       // Google unreachable (offline laptop, proxy, firewall)
+const QUOTA_COOLDOWN_MS = 60_000;     // HTTP 429 on one model: skip that model for a minute
+const DISCOVERY_TTL_MS = 60 * 60_000; // re-ask Google for the model list every hour
 
 /** Breaker / status state is kept PER KEY (by fingerprint), so a bad .env key never blocks a good browser key. */
-interface KeyState { lastModelUsed?: string; lastError?: string; pausedUntil: number }
+interface KeyState {
+  lastModelUsed?: string; lastError?: string; pausedUntil: number;
+  /** models this key may call, from ListModels (undefined = not known yet / lookup failed) */
+  available?: Set<string>; discoveredAt?: number;
+  /** models that returned 404 / "not found" for this key */
+  unavailable: Set<string>;
+  /** model -> time until which it is skipped (quota) */
+  quotaUntil: Map<string, number>;
+}
 const states = new Map<string, KeyState>();
 function stateFor(key: string): KeyState {
   const fp = keyFingerprint(key);
   let s = states.get(fp);
-  if (!s) { s = { pausedUntil: 0 }; states.set(fp, s); }
+  if (!s) { s = { pausedUntil: 0, unavailable: new Set(), quotaUntil: new Map() }; states.set(fp, s); }
   return s;
 }
 
@@ -44,16 +66,58 @@ export function geminiKey(): string {
   return currentRequestAi().key || serverKey();
 }
 
+let warnedRetired = false;
+/** Preference order: GEMINI_MODELS from .env (retired names removed), then the built-in list. */
 export function defaultModels(): string[] {
   const raw = (process.env.GEMINI_MODELS || '').split(',').map((m) => m.trim()).filter(Boolean);
-  return raw.length ? raw : DEFAULT_MODELS;
+  const retired = raw.filter(isRetiredModel);
+  if (retired.length && !warnedRetired) {
+    warnedRetired = true;
+    console.warn(`[ai] Ignoring retired Gemini models from GEMINI_MODELS: ${retired.join(', ')}. You can delete that line from .env - the app picks working models automatically.`);
+  }
+  const fromEnv = raw.filter((m) => !isRetiredModel(m));
+  return [...new Set([...fromEnv, ...DEFAULT_MODELS])];
 }
 
 /** Model order for this request: the browser's chosen model first, then the configured fallbacks. */
 export function geminiModels(): string[] {
   const base = defaultModels();
-  const chosen = currentRequestAi().model;
-  return chosen ? [chosen, ...base.filter((m) => m !== chosen)] : base;
+  const chosen = (currentRequestAi().model || '').trim();
+  return chosen && !isRetiredModel(chosen) ? [chosen, ...base.filter((m) => m !== chosen)] : base;
+}
+
+/** Rank discovered models that are not in our preference list: newest version first, flash before others. */
+function rankExtra(names: string[]): string[] {
+  const ver = (n: string) => { const m = n.match(/gemini-(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
+  return [...names].sort((a, b) => ver(b) - ver(a) || Number(/flash/.test(b)) - Number(/flash/.test(a)) || a.localeCompare(b));
+}
+
+/** Ask Google once per hour which text models this key can call. Never throws. */
+async function discover(key: string, st: KeyState): Promise<'ok' | 'key-rejected' | 'offline'> {
+  if (st.discoveredAt && Date.now() - st.discoveredAt < DISCOVERY_TTL_MS) return 'ok';
+  const r = await listGeminiModels(key, true);
+  if (r.source === 'google') { st.available = new Set(r.models.map((m) => m.name)); st.discoveredAt = Date.now(); }
+  // List unavailable for another reason: use the preference list and ask again in 5 minutes, not on every call.
+  else if (!r.error && !r.networkError) st.discoveredAt = Date.now() - DISCOVERY_TTL_MS + 5 * 60_000;
+  if (r.error) { st.lastError = r.error; st.pausedUntil = Date.now() + KEY_COOLDOWN_MS; return 'key-rejected'; }
+  if (r.networkError) { st.lastError = 'Could not reach Google (network error)'; st.pausedUntil = Date.now() + NET_COOLDOWN_MS; return 'offline'; }
+  return 'ok';
+}
+
+/** Final try-order for a key: preference list filtered to what the key can use, then any other usable models. */
+async function modelsForKey(key: string, st: KeyState, preferred = geminiModels()): Promise<string[]> {
+  if ((await discover(key, st)) !== 'ok') return [];
+  const now = Date.now();
+  const usable = (m: string) => !st.unavailable.has(m) && (st.quotaUntil.get(m) ?? 0) <= now;
+  let order: string[];
+  if (st.available && st.available.size) {
+    const extras = rankExtra([...st.available].filter((m) => !preferred.includes(m) && !isRetiredModel(m)));
+    order = [...preferred.filter((m) => st.available!.has(m)), ...extras];
+  } else {
+    order = preferred;
+  }
+  const ok = order.filter(usable);
+  return ok.length ? ok : order.filter((m) => !st.unavailable.has(m));
 }
 
 export function geminiConfigured(): boolean {
@@ -96,13 +160,16 @@ export async function geminiGenerate(prompt: string, opts: GeminiOptions = {}): 
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: opts.temperature ?? 0.3,
-      maxOutputTokens: opts.maxOutputTokens ?? 2048,
+      // Newer Gemini models "think" before answering and those tokens count against this limit,
+      // so keep it generous or the visible answer comes back empty.
+      maxOutputTokens: opts.maxOutputTokens ?? 8192,
       ...(opts.json ? { responseMimeType: 'application/json' } : {}),
     },
   };
   if (opts.system) body.systemInstruction = { parts: [{ text: opts.system }] };
 
-  for (const model of geminiModels()) {
+  const attempts: string[] = [];
+  for (const model of await modelsForKey(key, st)) {
     const left = deadline - Date.now();
     if (left <= 0) { st.lastError = 'time budget used up'; break; }
     const ctrl = new AbortController();
@@ -115,27 +182,29 @@ export async function geminiGenerate(prompt: string, opts: GeminiOptions = {}): 
         signal: ctrl.signal,
       });
       if (!res.ok) {
-        st.lastError = `${model}: HTTP ${res.status}`;
-        let detail = '';
-        try { detail = JSON.stringify(await res.json()); } catch { /* ignore */ }
-        // A bad key fails the same way for every model: stop and pause instead of retrying.
-        if (res.status === 401 || res.status === 403 || (res.status === 400 && /api[_ ]?key/i.test(detail))) {
-          st.lastError = `${model}: HTTP ${res.status} (key rejected - check the key in AI settings or GEMINI_API_KEY)`;
+        const detail = await readDetail(res);
+        attempts.push(`${model}: ${describeHttpError(res.status, detail)}`);
+        st.lastError = attempts.join(' | ');
+        if (isKeyRejection(res.status, detail)) {
+          // A bad key fails the same way for every model: stop and pause instead of retrying.
           st.pausedUntil = Date.now() + KEY_COOLDOWN_MS;
           return null;
         }
+        if (isModelUnavailable(res.status, detail)) st.unavailable.add(model);
+        else if (res.status === 429) st.quotaUntil.set(model, Date.now() + QUOTA_COOLDOWN_MS);
         continue;
       }
       const data: any = await res.json();
       const parts: any[] = data?.candidates?.[0]?.content?.parts ?? [];
       const text = parts.map((p) => (typeof p?.text === 'string' ? p.text : '')).join('').trim();
-      if (!text) { st.lastError = `${model}: empty response`; continue; }
+      if (!text) { attempts.push(`${model}: empty answer (${data?.candidates?.[0]?.finishReason ?? 'no candidates'})`); st.lastError = attempts.join(' | '); continue; }
       st.lastModelUsed = model;
       st.lastError = undefined;
       return { text, model };
     } catch (e: any) {
       const timeout = e?.name === 'AbortError';
-      st.lastError = `${model}: ${timeout ? 'timeout' : 'network error'}`;
+      attempts.push(`${model}: ${timeout ? 'timeout' : 'network error'}`);
+      st.lastError = attempts.join(' | ');
       if (!timeout) { st.pausedUntil = Date.now() + NET_COOLDOWN_MS; return null; } // no network: same for every model
     } finally {
       clearTimeout(timer);
@@ -170,75 +239,149 @@ export async function geminiJson<T = unknown>(prompt: string, opts: Omit<GeminiO
   return { data, model: r.model };
 }
 
+/** Read an error body as text whatever the response object offers (real fetch or a test double). */
+async function readDetail(res: any): Promise<string> {
+  try { if (typeof res.text === 'function') return await res.text(); } catch { /* ignore */ }
+  try { if (typeof res.json === 'function') return JSON.stringify(await res.json()); } catch { /* ignore */ }
+  return '';
+}
+
+function googleMessage(detail: string): string | undefined {
+  try { return JSON.parse(detail)?.error?.message as string | undefined; } catch { return undefined; }
+}
+/** 401/403 or a 400 that says the key itself is bad. NOT a 403 about one model (that is "model unavailable"). */
+function isKeyRejection(status: number, detail: string): boolean {
+  if (status === 401) return true;
+  if (status === 400 && /api[_ ]?key|API_KEY_INVALID/i.test(detail)) return true;
+  if (status === 403 && !/model/i.test(googleMessage(detail) ?? '')) return true;
+  return false;
+}
+/** 404, or 403/400 that mentions the model (retired, restricted to earlier users, not supported). */
+function isModelUnavailable(status: number, detail: string): boolean {
+  const msg = googleMessage(detail) ?? detail;
+  if (status === 404) return true;
+  return (status === 403 || status === 400) && /model/i.test(msg) && /(not found|not supported|not available|no longer|access|permission|deprecat)/i.test(msg);
+}
+
 /** Readable message for a failed Gemini HTTP call (no key material, ever). */
 function describeHttpError(status: number, detail: string): string {
-  const msg = (() => { try { return JSON.parse(detail)?.error?.message as string | undefined; } catch { return undefined; } })();
-  if (status === 400 && /api[_ ]?key/i.test(detail)) return 'Google rejected this key (API key not valid). Copy it again from aistudio.google.com/apikey.';
-  if (status === 401 || status === 403) return 'Google rejected this key (not authorised for the Gemini API). Check the key or enable the Generative Language API for its project.';
-  if (status === 404) return 'This model is not available for your key. Pick another model.';
-  if (status === 429) return 'Quota exceeded for this key (HTTP 429). Wait a minute or use another key/model.';
+  const msg = googleMessage(detail);
+  if (status === 400 && /api[_ ]?key|API_KEY_INVALID/i.test(detail)) return 'Google rejected this key (API key not valid). Copy it again from aistudio.google.com/apikey.';
+  if (isModelUnavailable(status, detail)) return 'model not available for this key';
+  if (status === 401 || status === 403) return `Google rejected this key (HTTP ${status}${msg ? `: ${msg.slice(0, 140)}` : ''}). Check the key, or enable the Generative Language API for its Google Cloud project.`;
+  if (status === 429) return 'free-tier quota reached for this model (HTTP 429) - try again in a minute';
+  if (status >= 500) return `Google is busy (HTTP ${status})`;
   return `HTTP ${status}${msg ? `: ${msg.slice(0, 160)}` : ''}`;
 }
 
-export interface TestKeyResult { ok: boolean; model?: string; latencyMs: number; error?: string }
+export interface TestKeyResult {
+  ok: boolean; model?: string; latencyMs: number; error?: string;
+  /** models Google says this key can use (when the lookup worked) */
+  availableModels?: string[];
+  /** one line per model tried */
+  tried?: { model: string; result: string }[];
+}
 
 /**
- * Make one tiny call to check a key (in-app "Test key" button). Tries the chosen model first, then fallbacks,
- * and returns the first model that answers. A success clears any pause on this key.
+ * In-app "Test key": ask Google which models the key can use, then try the chosen model and the best others
+ * until one answers. Returns the model that worked (the dialog switches to it) and every attempt for clarity.
  */
 export async function testGeminiKey(key: string, model?: string): Promise<TestKeyResult> {
   const started = Date.now();
-  const order = model ? [model, ...defaultModels().filter((m) => m !== model)] : defaultModels();
   const st = stateFor(key);
-  let error = 'No model answered';
-  for (const m of order.slice(0, 3)) {
+  st.unavailable.clear(); st.quotaUntil.clear(); st.discoveredAt = undefined; // fresh look on every test
+  const list = await listGeminiModels(key, true);
+  if (list.source === 'google') { st.available = new Set(list.models.map((m) => m.name)); st.discoveredAt = Date.now(); }
+  if (list.error) {
+    st.lastError = list.error;
+    return { ok: false, latencyMs: Date.now() - started, error: list.error, tried: [] };
+  }
+  if (list.networkError) {
+    const error = 'Could not reach Google (network error). Check your internet connection or proxy.';
+    st.lastError = error;
+    return { ok: false, latencyMs: Date.now() - started, error, tried: [] };
+  }
+  const chosen = model && !isRetiredModel(model) ? model : undefined;
+  const order = await modelsForKey(key, st, chosen ? [chosen, ...defaultModels().filter((m) => m !== chosen)] : defaultModels());
+  const tried: { model: string; result: string }[] = [];
+  for (const m of order.slice(0, 6)) {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 15_000);
+    const timer = setTimeout(() => ctrl.abort(), 20_000);
     try {
       const res = await fetch(`${ENDPOINT}/${encodeURIComponent(m)}:generateContent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Reply with the single word OK.' }] }], generationConfig: { maxOutputTokens: 8, temperature: 0 } }),
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Reply with the single word OK.' }] }], generationConfig: { maxOutputTokens: 1024, temperature: 0 } }),
         signal: ctrl.signal,
       });
       if (!res.ok) {
-        let detail = ''; try { detail = await res.text(); } catch { /* ignore */ }
-        error = `${m}: ${describeHttpError(res.status, detail)}`;
-        if (res.status === 404) continue;         // model not available: try the next one
-        st.lastError = error;
-        return { ok: false, latencyMs: Date.now() - started, error };
+        const detail = await readDetail(res);
+        tried.push({ model: m, result: describeHttpError(res.status, detail) });
+        if (isKeyRejection(res.status, detail)) {
+          st.lastError = `${m}: ${describeHttpError(res.status, detail)}`;
+          return { ok: false, latencyMs: Date.now() - started, error: describeHttpError(res.status, detail), tried, availableModels: list.source === 'google' ? list.models.map((x) => x.name) : undefined };
+        }
+        if (isModelUnavailable(res.status, detail)) st.unavailable.add(m);
+        else if (res.status === 429) st.quotaUntil.set(m, Date.now() + QUOTA_COOLDOWN_MS);
+        continue; // try the next model
       }
+      // Any 200 means the key + model work (a thinking model may spend this tiny reply on thoughts).
       st.pausedUntil = 0; st.lastError = undefined; st.lastModelUsed = m;
-      return { ok: true, model: m, latencyMs: Date.now() - started };
+      tried.push({ model: m, result: 'OK' });
+      return { ok: true, model: m, latencyMs: Date.now() - started, tried, availableModels: list.source === 'google' ? list.models.map((x) => x.name) : undefined };
     } catch (e: any) {
-      error = e?.name === 'AbortError' ? `${m}: no answer within 15 seconds` : 'Could not reach Google (network error). Check your internet connection or proxy.';
+      if (e?.name === 'AbortError') { tried.push({ model: m, result: 'no answer within 20 seconds' }); continue; }
+      const error = 'Could not reach Google (network error). Check your internet connection or proxy.';
       st.lastError = error;
-      return { ok: false, latencyMs: Date.now() - started, error };
+      return { ok: false, latencyMs: Date.now() - started, error, tried };
     } finally { clearTimeout(timer); }
   }
+  const error = tried.length
+    ? `None of the models answered: ${tried.map((t) => `${t.model} (${t.result})`).join('; ')}.`
+    : 'Google did not list any text model for this key. Open aistudio.google.com, accept the terms, and check the key belongs to a project with the Gemini API enabled.';
   st.lastError = error;
-  return { ok: false, latencyMs: Date.now() - started, error };
+  return { ok: false, latencyMs: Date.now() - started, error, tried, availableModels: list.source === 'google' ? list.models.map((x) => x.name) : undefined };
 }
 
-export interface ModelInfo { name: string; displayName: string }
+export interface ModelInfo { name: string; displayName: string; recommended?: boolean }
 
-/** Models this key can call (generateContent, text Gemini models). Falls back to the defaults. */
-export async function listGeminiModels(key: string): Promise<{ models: ModelInfo[]; source: 'google' | 'default' }> {
-  const fallback = { models: defaultModels().map((m) => ({ name: m, displayName: m })), source: 'default' as const };
+/**
+ * Models this key can call (generateContent, text Gemini models), ordered best first.
+ * Falls back to the built-in list when Google cannot be asked. `strict` = report a rejected key as an error.
+ */
+export async function listGeminiModels(key: string, strict = false): Promise<{ models: ModelInfo[]; source: 'google' | 'default'; error?: string; networkError?: boolean }> {
+  const fallback = { models: defaultModels().map((m, i) => ({ name: m, displayName: m, recommended: i === 0 })), source: 'default' as const };
   if (!key) return fallback;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 10_000);
   try {
-    const res = await fetch(`${ENDPOINT}?pageSize=200`, { headers: { 'x-goog-api-key': key }, signal: ctrl.signal });
-    if (!res.ok) return fallback;
-    const data: any = await res.json();
-    const models: ModelInfo[] = (data?.models ?? [])
+    const all: any[] = [];
+    let pageToken = '';
+    for (let page = 0; page < 5; page++) {
+      const res = await fetch(`${ENDPOINT}?pageSize=200${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`, { headers: { 'x-goog-api-key': key }, signal: ctrl.signal });
+      if (!res.ok) {
+        const detail = await readDetail(res);
+        if (strict && isKeyRejection(res.status, detail)) return { ...fallback, error: describeHttpError(res.status, detail) };
+        return fallback;
+      }
+      const data: any = await res.json();
+      all.push(...(data?.models ?? []));
+      pageToken = data?.nextPageToken || '';
+      if (!pageToken) break;
+    }
+    const names: string[] = all
       .filter((m: any) => typeof m?.name === 'string' && m.name.startsWith('models/gemini')
         && Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent')
-        && !/(tts|image|embedding|audio|live|vision)/i.test(m.name))
-      .map((m: any) => ({ name: String(m.name).replace(/^models\//, ''), displayName: String(m.displayName || m.name).slice(0, 80) }));
-    return models.length ? { models, source: 'google' } : fallback;
-  } catch {
-    return fallback;
+        && !/(tts|image|embedding|audio|live|vision|transcribe|robotics|computer-use|omni|nano-banana|customtools)/i.test(m.name))
+      .map((m: any) => String(m.name).replace(/^models\//, ''))
+      .filter((n: string) => !isRetiredModel(n));
+    if (!names.length) return fallback;
+    const display = new Map(all.map((m: any) => [String(m.name).replace(/^models\//, ''), String(m.displayName || m.name).slice(0, 80)]));
+    const pref = defaultModels();
+    const ordered = [...pref.filter((m) => names.includes(m)), ...rankExtra(names.filter((n) => !pref.includes(n)))];
+    return { models: ordered.map((n, i) => ({ name: n, displayName: display.get(n) || n, recommended: i === 0 })), source: 'google' };
+  } catch (e: any) {
+    // A timeout just means "unknown list"; a thrown fetch means Google is unreachable.
+    return e?.name === 'AbortError' ? fallback : { ...fallback, networkError: true };
   } finally { clearTimeout(timer); }
 }

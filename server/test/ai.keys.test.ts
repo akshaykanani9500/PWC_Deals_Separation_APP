@@ -49,13 +49,14 @@ describe('request-scoped AI key', () => {
   it('sends the header key to Google for Piku and labels the answer with the model', async () => {
     const f = vi.fn().mockResolvedValue(ok('Phoenix is on track [1].'));
     vi.stubGlobal('fetch', f);
-    const res = await authed('post', '/api/ai/piku', { 'x-ai-key': UI_KEY, 'x-ai-model': 'gemini-2.5-flash' })
+    const res = await authed('post', '/api/ai/piku', { 'x-ai-key': UI_KEY, 'x-ai-model': 'gemini-3.6-flash' })
       .send({ message: 'Compare the risks and next steps across my projects', language: 'en', context: { type: 'global' } });
     expect(res.status).toBe(200);
     expect(f).toHaveBeenCalled();
-    expect(f.mock.calls[0][1].headers['x-goog-api-key']).toBe(UI_KEY);
-    expect(String(f.mock.calls[0][0])).toContain('gemini-2.5-flash');
-    expect(res.body.mode).toBe('gemini-2.5-flash');
+    for (const c of f.mock.calls) expect(c[1].headers['x-goog-api-key']).toBe(UI_KEY);
+    const gen = f.mock.calls.find((c) => String(c[0]).includes(':generateContent'))!;
+    expect(String(gen[0])).toContain('gemini-3.6-flash'); // the model chosen in the UI is tried first
+    expect(res.body.mode).toBe('gemini-3.6-flash');
   });
 
   it('status reports the key source per request', async () => {
@@ -106,10 +107,38 @@ describe('request-scoped AI key', () => {
 describe('/ai/test-key and /ai/models', () => {
   it('test-key: success returns the model that answered', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok('OK')));
-    const res = await authed('post', '/api/ai/test-key').send({ key: UI_KEY, model: 'gemini-2.0-flash' });
+    const res = await authed('post', '/api/ai/test-key').send({ key: UI_KEY, model: 'gemini-3.6-flash' });
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ ok: true, model: 'gemini-2.0-flash' });
+    expect(res.body).toMatchObject({ ok: true, model: 'gemini-3.6-flash' });
     expect(typeof res.body.latencyMs).toBe('number');
+  });
+
+  it('test-key: a retired or locked model is skipped and the first working model is returned', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('?pageSize=')) return { ok: true, status: 200, json: async () => ({ models: [
+        { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-3.8-flash', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-3.5-flash-lite', supportedGenerationMethods: ['generateContent'] },
+      ] }) };
+      if (url.includes('gemini-2.5-flash')) return { ok: false, status: 403, text: async () => JSON.stringify({ error: { message: 'Access to model gemini-2.5-flash is limited to previous users' } }) };
+      if (url.includes('gemini-3.8-flash')) return { ok: false, status: 429, text: async () => '{"error":{"message":"Quota exceeded"}}' };
+      // a thinking model can return no visible text for a tiny reply - still counts as working
+      return { ok: true, status: 200, json: async () => ({ candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [] } }] }) };
+    }));
+    const res = await authed('post', '/api/ai/test-key').send({ key: UI_KEY, model: 'gemini-1.5-flash' });
+    expect(res.body).toMatchObject({ ok: true, model: 'gemini-3.5-flash-lite' });
+    expect(res.body.tried.map((t: any) => t.model)).toEqual(['gemini-3.8-flash', 'gemini-3.5-flash-lite', ]);
+    expect(JSON.stringify(res.body)).not.toContain('gemini-1.5-flash'); // retired: never tried
+  });
+
+  it('test-key: lists every model tried when none works', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('?pageSize=')) return { ok: true, status: 200, json: async () => ({ models: [{ name: 'models/gemini-3.6-flash', supportedGenerationMethods: ['generateContent'] }] }) };
+      return { ok: false, status: 429, text: async () => '{"error":{"message":"Quota exceeded"}}' };
+    }));
+    const res = await authed('post', '/api/ai/test-key').send({ key: UI_KEY });
+    expect(res.body.ok).toBe(false);
+    expect(res.body.error).toMatch(/gemini-3\.6-flash \(free-tier quota/);
   });
 
   it('test-key: a rejected key gives a readable error', async () => {
@@ -136,14 +165,15 @@ describe('/ai/test-key and /ai/models', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')));
     const fb = await authed('get', '/api/ai/models', { 'x-ai-key': UI_KEY });
     expect(fb.body.source).toBe('default');
-    expect(fb.body.models.map((m: any) => m.name)).toContain('gemini-2.5-flash');
+    expect(fb.body.models[0].name).toBe('gemini-3.8-flash');
+    expect(fb.body.models.map((m: any) => m.name).some((n: string) => /1\.5|2\.0/.test(n))).toBe(false);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ models: [
       { name: 'models/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', supportedGenerationMethods: ['generateContent'] },
       { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
       { name: 'models/gemini-2.5-flash-preview-tts', supportedGenerationMethods: ['generateContent'] },
     ] }) }));
     const real = await authed('post', '/api/ai/models').send({ key: UI_KEY });
-    expect(real.body).toEqual({ source: 'google', models: [{ name: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro' }] });
+    expect(real.body).toEqual({ source: 'google', models: [{ name: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', recommended: true }] });
   });
 });
 

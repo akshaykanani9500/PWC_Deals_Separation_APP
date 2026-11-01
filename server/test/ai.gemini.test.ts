@@ -24,15 +24,16 @@ describe('Gemini client', () => {
     process.env.GEMINI_API_KEY = 'test-key';
     process.env.GEMINI_MODELS = 'model-a,model-b';
     const f = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ models: [] }) }) // ListModels: nothing known
       .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) })
       .mockResolvedValueOnce(ok('Hello from B'));
     vi.stubGlobal('fetch', f);
     const r = await geminiGenerate('ping');
     expect(r).toEqual({ text: 'Hello from B', model: 'model-b' });
-    expect(f.mock.calls[0][0]).toContain('/models/model-a:generateContent');
-    expect(f.mock.calls[1][0]).toContain('/models/model-b:generateContent');
-    expect(f.mock.calls[0][0]).not.toContain('test-key');
-    expect(f.mock.calls[0][1].headers['x-goog-api-key']).toBe('test-key');
+    expect(f.mock.calls[0][0]).toContain('/v1beta/models?pageSize=');
+    expect(f.mock.calls[1][0]).toContain('/models/model-a:generateContent');
+    expect(f.mock.calls[2][0]).toContain('/models/model-b:generateContent');
+    for (const c of f.mock.calls) { expect(String(c[0])).not.toContain('test-key'); expect(c[1].headers['x-goog-api-key']).toBe('test-key'); }
     expect(geminiStatus().lastModelUsed).toBe('model-b');
   });
 
@@ -48,7 +49,7 @@ describe('Gemini client', () => {
     expect(safeJsonParse('nope')).toBeNull();
     process.env.GEMINI_API_KEY = 'k';
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok('{"x": "y"}')));
-    expect(await geminiJson('q')).toEqual({ data: { x: 'y' }, model: 'gemini-2.5-flash' });
+    expect(await geminiJson('q')).toEqual({ data: { x: 'y' }, model: 'gemini-3.8-flash' });
   });
 
   it('Piku falls back to the offline engine when Gemini is unreachable', async () => {
@@ -64,9 +65,10 @@ describe('Gemini client', () => {
     const f = vi.fn().mockResolvedValue(ok('Phoenix has **3** overdue items [1].'));
     vi.stubGlobal('fetch', f);
     const r = await answerPiku(db, await authFor(db, USERS.manager), { message: 'What is overdue and blocked here?', language: 'en', context: { type: 'project', projectId: 'PRJ-0001' } });
-    expect(r.mode).toBe('gemini-2.5-flash');
+    expect(r.mode).toBe('gemini-3.8-flash');
     expect(r.answer).toContain('overdue items');
-    const prompt = JSON.parse(f.mock.calls[0][1].body).contents[0].parts[0].text as string;
+    const gen = f.mock.calls.find((c) => String(c[0]).includes(':generateContent'))!;
+    const prompt = JSON.parse(gen[1].body).contents[0].parts[0].text as string;
     expect(prompt).toContain('FACTS');
     expect(prompt).not.toContain('Project Rioja'); // never another project's data
   });
@@ -87,6 +89,24 @@ describe('Gemini client', () => {
     expect(await geminiGenerate('hi again')).toBeNull();
     expect(f).toHaveBeenCalledTimes(1); // paused
     expect(geminiStatus().pausedUntil).toBeTruthy();
+  });
+  it('skips retired models from an old .env and models the key cannot use', async () => {
+    process.env.GEMINI_API_KEY = 'k'; process.env.GEMINI_MODELS = 'gemini-2.5-flash,gemini-2.0-flash,gemini-1.5-flash';
+    const f = vi.fn(async (url: string) => {
+      if (url.includes('?pageSize=')) return { ok: true, status: 200, json: async () => ({ models: [
+        { name: 'models/gemini-3.6-flash', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-3.5-flash-lite', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-3.8-flash-tts', supportedGenerationMethods: ['generateContent'] },
+      ] }) };
+      if (url.includes('gemini-3.6-flash')) return { ok: false, status: 429, json: async () => ({ error: { message: 'Quota exceeded' } }) };
+      return ok('hello');
+    });
+    vi.stubGlobal('fetch', f);
+    const r = await geminiGenerate('x');
+    expect(r?.model).toBe('gemini-3.5-flash-lite');
+    const called = f.mock.calls.map((c) => String(c[0]));
+    expect(called.some((u) => /gemini-(1\.5|2\.0|2\.5)-flash:/.test(u))).toBe(false); // retired / not listed for this key
+    expect(called.some((u) => u.includes('tts'))).toBe(false);
   });
   it('no network pauses Gemini after one attempt', async () => {
     process.env.GEMINI_API_KEY = 'k'; process.env.GEMINI_MODELS = 'model-a,model-b,model-c';
