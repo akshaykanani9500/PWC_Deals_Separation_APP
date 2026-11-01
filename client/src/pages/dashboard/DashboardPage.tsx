@@ -1,5 +1,5 @@
 /** Dashboard (sketch 2): customisable widget grid on top, current projects table below. */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import GridLayout, { WidthProvider, type Layout } from 'react-grid-layout';
 import { Plus, RefreshCw, LayoutGrid, X, RotateCcw, Check } from 'lucide-react';
 import type { DashboardData } from '@shared/types';
@@ -9,7 +9,7 @@ import { useSession } from '../../lib/session';
 import { api } from '../../lib/api';
 import { Button, Skeleton } from '../../components/ui';
 import { useToast } from '../../components/toast';
-import { WIDGETS, DEFAULT_LAYOUT_IDS, type WidgetDef } from './widgets';
+import { WIDGETS, DEFAULT_LAYOUT_IDS, type WidgetDef, type QuickFilter } from './widgets';
 import ProjectsTable from './ProjectsTable';
 import NewProjectPanel from './NewProjectPanel';
 
@@ -50,6 +50,12 @@ export default function DashboardPage() {
   const [customize, setCustomize] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [tableKey, setTableKey] = useState(0);
+  const [quick, setQuick] = useState<QuickFilter | null>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const applyQuick = (f: QuickFilter) => {
+    setQuick(f === 'active' ? null : f);
+    setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30);
+  };
 
   const financeVisible = !!data && data.kpis.feeBudget !== null;
   const allowed = (w: WidgetDef) => !w.finance || financeVisible;
@@ -87,8 +93,8 @@ export default function DashboardPage() {
     <div>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-[26px] font-semibold leading-tight">Dashboard</h1>
-          <p className="text-[13px] text-ink-soft">
+          <h1 className="text-[24px] font-semibold leading-tight">Dashboard</h1>
+          <p className="text-[13.5px] text-ink-soft">
             {session?.scope === 'all' ? 'All separation projects across the practice.' : 'Separation projects you are staffed on.'}
             {!financeVisible && data && ' Finance figures are hidden for your role.'}
           </p>
@@ -146,21 +152,25 @@ export default function DashboardPage() {
               <div key={l.i} className={`card flex flex-col overflow-hidden ${customize ? 'ring-1 ring-brand-ring/60' : ''}`}>
                 {(!isKpi || customize) && (
                   <div className={`widget-handle flex items-center justify-between px-4 pt-3 ${customize ? 'cursor-move' : ''}`}>
-                    <h3 className="text-[13px] font-semibold">{w.title}</h3>
+                    <h3 className="text-[14px] font-semibold">{w.title}</h3>
                     {customize && (
                       <button onClick={() => setLayout((s) => (s ?? []).filter((x) => x.i !== l.i))} onMouseDown={(e) => e.stopPropagation()}
                         className="rounded p-0.5 text-ink-muted hover:bg-sunken hover:text-rose" aria-label={`Remove ${w.title}`}><X size={14} /></button>
                     )}
                   </div>
                 )}
-                <div className={`min-h-0 flex-1 ${isKpi && !customize ? 'p-4' : 'overflow-auto px-4 pb-3 pt-2'}`}>{w.render(data, userMap)}</div>
+                <div className={`min-h-0 flex-1 ${isKpi && !customize ? '' : 'overflow-auto px-4 pb-3 pt-2'}`}>
+                  {w.render(data, userMap, { onFilter: applyQuick, userName: session?.user.full_name, customizing: customize })}
+                </div>
               </div>
             );
           })}
         </Grid>
       ) : null}
 
-      <ProjectsTable key={tableKey} financeVisible={financeVisible} />
+      <div ref={tableRef} className="scroll-mt-28">
+        <ProjectsTable key={tableKey} financeVisible={financeVisible} quick={quick} onClearQuick={() => setQuick(null)} />
+      </div>
 
       <NewProjectPanel open={newOpen} onClose={() => setNewOpen(false)} />
     </div>

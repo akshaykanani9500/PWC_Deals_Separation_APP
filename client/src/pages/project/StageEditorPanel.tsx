@@ -110,7 +110,7 @@ export function StageEditorPanel({ open, detail, onClose, onSaved }: { open: boo
             <ul className="space-y-1.5">
               {ideas.map((s, i) => (
                 <li key={s.key} className="flex items-start gap-2">
-                  <input type="checkbox" className="mt-1 h-3.5 w-3.5 accent-[#D04A02]" checked={s.pick} onChange={(e) => setIdeas((x) => x.map((y, j) => (j === i ? { ...y, pick: e.target.checked } : y)))} aria-label={`Add ${s.name}`} />
+                  <input type="checkbox" className="mt-1 h-3.5 w-3.5 accent-[#B83F04]" checked={s.pick} onChange={(e) => setIdeas((x) => x.map((y, j) => (j === i ? { ...y, pick: e.target.checked } : y)))} aria-label={`Add ${s.name}`} />
                   <div className="text-[12.5px]"><span className="font-medium">{s.name}</span>{s.activities.length > 0 && <span className="text-ink-muted"> with {s.activities.length} activities</span>}{s.description && <div className="text-ink-muted">{s.description}</div>}</div>
                 </li>
               ))}

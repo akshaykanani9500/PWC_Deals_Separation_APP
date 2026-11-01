@@ -56,7 +56,7 @@ export default function LoginPage() {
       <div className="w-full max-w-[440px]">
         <div className="mb-6 flex justify-center"><Brand /></div>
         <div className="card p-6">
-          <h1 className="font-display text-[24px] font-semibold leading-tight">Sign in</h1>
+          <h1 className="text-[24px] font-semibold leading-tight">Sign in</h1>
           <p className="mt-1 text-[13px] text-ink-soft">Choose who you are. What you can see and change depends on your role.</p>
           {session && <p className="mt-2 rounded-md bg-sunken px-2.5 py-1.5 text-[12.5px] text-ink-soft">Currently signed in as {session.user.full_name}. Pick another person to switch.</p>}
 

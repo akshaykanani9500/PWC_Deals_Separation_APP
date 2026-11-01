@@ -73,7 +73,7 @@ for (const persona of PERSONAS) {
     if (act.perms.canAddTask) await expect(addTask).toBeEnabled(); else await expect(addTask).toBeDisabled();
 
     // Task side panel
-    await taskRows.first().locator('td').first().click();
+    await taskRows.first().getByTestId('task-title').click();
     await expect(page).toHaveURL(/[?&]task=TSK-/);
     const taskId = new URL(page.url()).searchParams.get('task')!;
     const td = await apiGet<any>(request, persona, `/tasks/${taskId}`);

@@ -9,7 +9,10 @@ import { userIndex } from './helpers';
 
 /** Actions a CLIENT may see in the activity feed. */
 const CLIENT_FEED = /^(task\.(update|create)|stage\.gate|activity\.(create|update))/;
-const READ_ONLY_AI = /^ai\.(summary|piku|draft|meeting|status|closeout)/;
+/** Only changes people act on: creates, edits, removals, gate decisions, close-outs, approvals.
+ *  Sign-ins, reads, denied access and read-only AI calls (summaries, Piku questions, drafts) are left out.
+ *  Applied AI suggestions still show, because they arrive as *.bulk_create / *.create with ai_generated='Y'. */
+const MEANINGFUL = /^(project|stage|activity|task|member|note|knowledge|closeout|communication)\.(create|bulk_create|update|delete|reorder|gate\.|approve|submit|archive_only|add|remove)/;
 
 export function dashboardRouter(db: Db): Router {
   const r = Router();
@@ -56,14 +59,35 @@ export function dashboardRouter(db: Db): Router {
       .slice(0, 12)
       .map((t) => ({ task_id: t.task_id, title: t.title, project_id: t.project_id, code_name: codeName.get(t.project_id) || '', due_date: t.due_date!, status: t.status, assignee_name: idx.name(t.assignee_user_id) }));
 
-    const audits = (await db.all<AuditEntry>('audit_log'))
-      .filter((a) => a.project_id && ids.has(a.project_id) && a.action !== 'access.denied')
-      // The client viewer only sees delivery progress, never internal AI use, close-out work or other people's reads.
-      .filter((a) => auth.code !== 'CLIENT' || CLIENT_FEED.test(a.action))
-      // Read-only AI calls (summaries, Piku questions) are noise in a team feed; keep only the asker's own.
-      .filter((a) => !READ_ONLY_AI.test(a.action) || a.actor_user_id === auth.user.user_id)
+    const feed = (await db.all<AuditEntry>('audit_log'))
+      .filter((a) => a.project_id && ids.has(a.project_id) && MEANINGFUL.test(a.action))
+      // The client viewer only sees delivery progress, never internal AI use or close-out work.
+      .filter((a) => auth.code !== 'CLIENT' || (CLIENT_FEED.test(a.action) && a.ai_generated !== 'Y'))
       .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
       .slice(0, 15);
+    // Human-readable record names and links (only for records the user can see: the project filter above already applies).
+    const [allTasks, allActs, allStages] = await Promise.all([db.all<Task>('tasks'), db.all<any>('activities'), db.all<Stage>('stages')]);
+    const taskBy = new Map(allTasks.map((t) => [t.task_id, t]));
+    const actBy = new Map(allActs.map((a) => [a.activity_id, a]));
+    const stageBy = new Map(allStages.map((s) => [s.stage_id, s]));
+    const audits = feed.map((a) => {
+      const pid = a.project_id!;
+      let record_label: string | undefined; let href: string | undefined;
+      const id = a.entity_id || '';
+      if (a.entity_type === 'task' && taskBy.has(id)) {
+        const t = taskBy.get(id)!; record_label = t.title;
+        href = `/projects/${pid}/stages/${t.stage_id}/activities/${t.activity_id}?task=${t.task_id}`;
+      } else if (a.entity_type === 'activity' && actBy.has(id)) {
+        const x = actBy.get(id)!; record_label = x.name; href = `/projects/${pid}/stages/${x.stage_id}/activities/${x.activity_id}`;
+      } else if (a.entity_type === 'stage' && stageBy.has(id)) {
+        const x = stageBy.get(id)!; record_label = x.name; href = `/projects/${pid}/stages/${x.stage_id}`;
+      } else {
+        record_label = codeName.get(pid); href = `/projects/${pid}`;
+      }
+      const out = { ...a, record_label, href, code_name: codeName.get(pid) };
+      if (auth.code === 'CLIENT') out.details = null; // never show internal change details to the client
+      return out;
+    });
 
     const data: DashboardData = {
       kpis: {

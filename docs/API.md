@@ -23,7 +23,7 @@ Owner of each block in brackets: **[A1]** = Agent 1 (data/API), **[A3]** = Agent
 | PUT | `/users/me/preferences` | `{ dashboard_layout?, preferred_language? }` | `User` |
 
 ## Dashboard [A1]
-| GET | `/dashboard` | – | `DashboardData` (only visible projects; finance null without `finance.view`) |
+| GET | `/dashboard` | – | `DashboardData` (only visible projects; finance null without `finance.view`; `recentActivity` = meaningful changes only (creates, edits, removals, gates, close-outs, approvals; no sign-ins, reads or read-only AI calls), each with `record_label`, `href`, `code_name`; CLIENT gets task/stage/activity progress only, without details or AI-assisted entries) |
 
 ## Projects [A1]
 | Method | Path | Body / query | Returns |
@@ -79,19 +79,29 @@ Owner of each block in brackets: **[A1]** = Agent 1 (data/API), **[A3]** = Agent
 | GET | `/audit` | `?projectId=&limit=200` | `AuditEntry[]` (`audit.view`) |
 | GET | `/admin/db` | – | `{ driver, sheetId?, schemaVersion, tables: { name, rows }[] }` (`admin.data`) |
 | POST | `/admin/db/reload` | – | `{ ok }` |
+| GET | `/admin/sheets/status` | `?test=1` to also open the sheet | `{ driver, sheetId, sheetUrl, keyFileFound, serviceAccountEmail, ready, missing[], steps[], connection? }` |
+| POST | `/admin/sheets/init` | `{ seed: boolean, source?: 'demo' \| 'current' }` | `{ ok, seeded, source, counts, message, restartNeeded }` - creates tabs (+ header rows, `_meta`) and optionally loads demo data or copies the current database |
 | GET | `/admin/export/oracle` | – | `text/plain` SQL: DDL + INSERTs |
 | GET | `/admin/export/xlsx` | – | xlsx workbook, one sheet per table (same layout as the Google Sheet) |
 
 ## AI [A3] (mounted at `/api/ai` by `server/src/routes/ai.ts`, export `createAiRouter(db: Db): Router`)
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| GET | `/ai/status` | – | `{ gemini: boolean, models: string[], lastModelUsed?: string }` |
+| GET | `/ai/status` | – | `{ gemini, source: 'browser' \| 'server' \| 'none', serverKeyPresent, models, lastModelUsed?, lastError?, pausedUntil? }` (state is per key) |
+| POST | `/ai/test-key` | `{ key?, model? }` (falls back to the header key, then the server key) | `{ ok, model?, latencyMs, error? }` - one tiny Gemini call |
+| GET | `/ai/models` | – (uses the header/server key) | `{ models: { name, displayName }[], source: 'google' \| 'default' }` |
+| POST | `/ai/models` | `{ key? }` (for a typed, unsaved key) | same as GET |
 | POST | `/ai/piku` | `PikuRequest` | `PikuResponse` (`piku.use`). Answers only from data the user can see. Saves both messages in `chat_messages`. |
 | GET | `/ai/piku/history` | `?contextType=&contextId=&limit=50` | `ChatMessage[]` (own messages only) |
 | POST | `/ai/suggest` | `SuggestRequest` | `SuggestResponse` (`ai.suggest`; `project` kind also allowed with `project.create`) |
 | POST | `/ai/summary` | `{ scope: 'project' \| 'stage' \| 'activity' \| 'task', id }` | `SummaryResponse` |
 | POST | `/ai/draft-email` | `{ scope, id, intent?: string, language?: 'en' \| 'hi' }` | `{ to: string, subject: string, body: string, mode: string }` |
 | POST | `/ai/meeting` | `{ scope, id }` | `{ title, agenda: string[], attendees: string[], suggestedSlots: string[], mode }` |
+
+**Browser AI key (v1.1).** Every request may carry `x-ai-key` and `x-ai-model` headers (set by the in-app AI settings
+dialog, stored in the browser's localStorage). `server/src/ai/requestAi.ts` puts them in AsyncLocalStorage; all AI
+features use them first, then `GEMINI_API_KEY` from `.env`, then offline. A malformed key is a 400 on `/ai/*` and ignored
+elsewhere. Keys are never logged, echoed, stored or audited (audit rows record only `key_source`).
 
 Every AI response carries `mode` ("gemini-2.5-flash" etc. or "offline") and is labelled "AI-generated" in the UI.
 Every AI call is written to `audit_log` with `ai_generated='Y'`.

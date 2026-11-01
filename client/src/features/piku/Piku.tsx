@@ -10,6 +10,7 @@ import type { ChatMessage, PikuContextType, PikuRequest, PikuResponse } from '@s
 import { useSession } from '../../lib/session';
 import { get, post } from '../../lib/api';
 import RichText from '../ai/RichText';
+import { useAiStatus } from '../ai/AiStatusButton';
 import PikuMascot from './PikuMascot';
 import { listen, looksHindi, speak, speechRecognitionSupported, speechSynthesisSupported, stopSpeaking, type Listener } from './voice';
 
@@ -192,7 +193,7 @@ function PikuInner({ firstName }: { firstName: string }) {
           onClick={() => setOpen(true)}
           aria-label="Open Piku, the AI assistant"
           data-testid="piku-bubble"
-          className="piku-bubble group fixed bottom-6 right-6 z-[70] flex items-center gap-2 rounded-full bg-piku py-2 pl-2 pr-4 text-white shadow-pop ring-4 ring-piku-soft transition hover:-translate-y-0.5 hover:bg-[#4d33bd] focus:outline-none focus-visible:ring-brand-ring"
+          className="piku-bubble group fixed bottom-6 right-6 z-[70] flex items-center gap-2 rounded-full bg-piku py-2 pl-2 pr-4 text-white shadow-pop ring-4 ring-piku-soft transition hover:-translate-y-0.5 hover:bg-piku/90 focus:outline-none focus-visible:ring-brand-ring"
         >
           <span className="rounded-full bg-white/15 p-0.5"><PikuMascot size={36} /></span>
           <span className="text-sm font-semibold tracking-wide">Ask Piku</span>
@@ -216,7 +217,8 @@ function PikuInner({ firstName }: { firstName: string }) {
                 <h2 className="text-sm font-semibold text-ink">Piku</h2>
                 <span className="rounded-full bg-piku px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">AI</span>
               </div>
-              <p className="truncate text-xs text-ink-muted" title={chip}>Asking about · <span className="font-medium text-ink-soft">{chip}</span></p>
+              <p className="truncate text-xs text-ink-muted" title={chip}>Asking about <span className="font-medium text-ink-soft">{chip}</span></p>
+              <PikuMode />
             </div>
             <div className="flex items-center rounded-lg border border-line bg-surface p-0.5 text-[11px] font-medium" role="group" aria-label="Answer language">
               {(['auto', 'en', 'hi'] as LangMode[]).map((m) => (
@@ -329,7 +331,7 @@ function PikuInner({ firstName }: { firstName: string }) {
                 className="max-h-32 min-h-[42px] flex-1 resize-none rounded-xl border border-line bg-sunken px-3 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:border-piku focus:bg-surface focus:outline-none"
               />
               <button type="button" onClick={() => send(input)} disabled={!input.trim() || busy}
-                className="shrink-0 rounded-xl bg-piku p-2.5 text-white hover:bg-[#4d33bd] disabled:opacity-40" aria-label="Send" data-testid="piku-send">
+                className="shrink-0 rounded-xl bg-piku p-2.5 text-white hover:bg-piku/90 disabled:opacity-40" aria-label="Send" data-testid="piku-send">
                 {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
               </button>
             </div>
@@ -343,5 +345,16 @@ function PikuInner({ firstName }: { firstName: string }) {
         </section>
       )}
     </>
+  );
+}
+
+/** Small line under the Piku title showing whether answers come from Gemini or the offline engine. */
+function PikuMode() {
+  const { mode, label } = useAiStatus();
+  return (
+    <p className="mt-0.5 flex items-center gap-1 text-[11.5px] text-ink-muted">
+      <span className={`h-1.5 w-1.5 rounded-full ${mode === 'gemini' ? 'bg-green' : mode === 'error' ? 'bg-rose' : 'bg-ink-muted'}`} aria-hidden />
+      {label.replace(/^AI: /, '')}
+    </p>
   );
 }

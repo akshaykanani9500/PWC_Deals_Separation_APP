@@ -1,7 +1,7 @@
 /** Current projects table: searchable, filterable, sortable; each row opens the project. */
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, FolderOpen } from 'lucide-react';
+import { Search, FolderOpen, X, ChevronRight } from 'lucide-react';
 import type { ProjectListItem } from '@shared/types';
 import { PROJECT_STATUS, INDUSTRIES, RAG } from '@shared/schema';
 import { useApi } from '../../hooks/useApi';
@@ -9,8 +9,9 @@ import { useSort } from '../../hooks/useSort';
 import { SortHeader } from '../../components/SortHeader';
 import { Checkbox, EmptyState, Input, Pill, Progress, RagDot, Select, Skeleton } from '../../components/ui';
 import { date, money } from '../../lib/format';
+import { QUICK_LABEL, type QuickFilter } from './widgets';
 
-export default function ProjectsTable({ financeVisible }: { financeVisible: boolean }) {
+export default function ProjectsTable({ financeVisible, quick, onClearQuick }: { financeVisible: boolean; quick?: QuickFilter | null; onClearQuick?: () => void }) {
   const nav = useNavigate();
   const { data, loading, error } = useApi<ProjectListItem[]>('/projects?includeClosed=1');
   const [q, setQ] = useState('');
@@ -23,20 +24,29 @@ export default function ProjectsTable({ financeVisible }: { financeVisible: bool
     const s = q.trim().toLowerCase();
     return (data ?? []).filter((p) =>
       (includeClosed || p.status !== 'Closed') &&
+      (quick !== 'risk' || p.status === 'At Risk' || p.rag === 'Red') && (quick !== 'overdue' || p.overdue_tasks > 0) &&
+      (quick !== 'open' || p.open_tasks > 0) && (quick !== 'blocked' || p.blocked_tasks > 0) &&
       (!status || p.status === status) && (!industry || p.industry === industry) && (!rag || p.rag === rag) &&
       (!s || [p.code_name, p.client_alias, p.deal_type, p.industry, p.partner_name, p.manager_name, p.current_stage_name, p.project_id]
         .some((v) => v?.toLowerCase().includes(s))));
-  }, [data, q, status, industry, rag, includeClosed]);
+  }, [data, q, status, industry, rag, includeClosed, quick]);
 
-  const { sorted, sort, toggle } = useSort(rows, { key: 'code_name' }, {
+  const { sorted: sortedRaw, sort, toggle } = useSort(rows, { key: 'code_name' }, {
     open: (p) => p.open_tasks, rag: (p) => ({ Red: 0, Amber: 1, Green: 2 } as Record<string, number>)[p.rag ?? ''] ?? 3,
   });
+  const sorted = quick === 'behind' ? [...sortedRaw].sort((a, b) => (a.percent_complete ?? 0) - (b.percent_complete ?? 0)) : sortedRaw;
 
   return (
     <section className="card mt-6 overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
-        <h2 className="mr-2 text-[15px] font-semibold">Current projects</h2>
-        <span className="num text-[12px] text-ink-muted">{rows.length} shown</span>
+        <h2 className="mr-1 text-[16px] font-semibold">Current projects</h2>
+        <span className="num text-[12.5px] text-ink-muted">{rows.length} shown</span>
+        {quick && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-link/30 bg-link-soft py-0.5 pl-2.5 pr-1 text-[12.5px] font-medium text-link">
+            {QUICK_LABEL[quick]}
+            <button onClick={onClearQuick} className="rounded-full p-0.5 hover:bg-link/10" aria-label={`Remove filter: ${QUICK_LABEL[quick]}`}><X size={13} /></button>
+          </span>
+        )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <div className="relative">
             <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-muted" />
@@ -70,17 +80,18 @@ export default function ProjectsTable({ financeVisible }: { financeVisible: bool
               <SortHeader label="Target close" k="target_close_date" sort={sort} onSort={toggle} />
               <SortHeader label="Open / overdue" k="open" sort={sort} onSort={toggle} align="right" />
               {financeVisible && <SortHeader label="TSA / month" k="tsa_monthly_cost" sort={sort} onSort={toggle} align="right" />}
+              <th className="th w-16"><span className="sr-only">Open</span></th>
             </tr>
           </thead>
           <tbody>
             {loading && !data && Array.from({ length: 5 }).map((_, i) => (
-              <tr key={i}><td colSpan={12} className="td"><Skeleton className="h-5 w-full" /></td></tr>
+              <tr key={i}><td colSpan={13} className="td"><Skeleton className="h-5 w-full" /></td></tr>
             ))}
             {sorted.map((p) => (
-              <tr key={p.project_id} className="cursor-pointer hover:bg-canvas" onClick={() => nav(`/projects/${p.project_id}`)}>
+              <tr key={p.project_id} className="row-action" onClick={() => nav(`/projects/${p.project_id}`)}>
                 <td className="td">
-                  <Link to={`/projects/${p.project_id}`} className="whitespace-nowrap font-medium text-ink underline-offset-2 hover:text-brand hover:underline" onClick={(e) => e.stopPropagation()}>{p.code_name}</Link>
-                  <div className="num text-[11px] text-ink-muted">{p.project_id}</div>
+                  <Link to={`/projects/${p.project_id}`} className="link whitespace-nowrap text-[14px]" onClick={(e) => e.stopPropagation()}>{p.code_name}</Link>
+                  <div className="num text-[11.5px] text-ink-muted">{p.project_id}</div>
                 </td>
                 <td className="td max-w-[200px] truncate text-ink-soft" title={p.client_alias}>{p.client_alias || '–'}</td>
                 <td className="td whitespace-nowrap text-ink-soft">{p.deal_type || '–'}</td>
@@ -93,6 +104,7 @@ export default function ProjectsTable({ financeVisible }: { financeVisible: bool
                 <td className="td num whitespace-nowrap text-[12.5px]">{date(p.target_close_date)}</td>
                 <td className="td num text-right text-[12.5px]">{p.open_tasks}<span className="text-ink-muted"> / </span><span className={p.overdue_tasks ? 'font-medium text-rose' : 'text-ink-muted'}>{p.overdue_tasks}</span></td>
                 {financeVisible && <td className="td num text-right text-[12.5px]">{money(p.tsa_monthly_cost, p.currency)}</td>}
+                <td className="td pr-4 text-right"><ChevronRight size={17} className="row-chevron ml-auto" aria-hidden /></td>
               </tr>
             ))}
           </tbody>
@@ -100,7 +112,8 @@ export default function ProjectsTable({ financeVisible }: { financeVisible: bool
         {error && <p className="px-4 py-6 text-[13px] text-rose">Could not load projects: {error.message}</p>}
         {data && !rows.length && (
           <EmptyState icon={<FolderOpen size={28} />} title="No projects match"
-            body={data.length ? 'Clear the search or filters to see more.' : 'You are not staffed on any project yet. A partner or manager can add you to a team.'} />
+            body={data.length ? 'Clear the search or filters to see more.' : 'You are not staffed on any project yet. A partner or manager can add you to a team.'}
+            action={data.length && (q || status || industry || rag || quick) ? <button className="link text-[13px]" onClick={() => { setQ(''); setStatus(''); setIndustry(''); setRag(''); onClearQuick?.(); }}>Clear all filters</button> : undefined} />
         )}
       </div>
     </section>

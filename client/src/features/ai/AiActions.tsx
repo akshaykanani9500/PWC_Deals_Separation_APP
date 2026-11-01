@@ -127,7 +127,7 @@ export default function AiActions({ scope, id }: AiActionsProps) {
                   {copied ? <Check size={13} /> : <Copy size={13} />}{copied ? 'Copied' : 'Copy'}
                 </button>
                 {open === 'email' && email && (
-                  <a href={mailto} className="inline-flex items-center gap-1 rounded-lg bg-piku px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#4d33bd]"><Mail size={13} /> Open in mail</a>
+                  <a href={mailto} className="inline-flex items-center gap-1 rounded-lg bg-piku px-3 py-1.5 text-xs font-semibold text-white hover:bg-piku/90"><Mail size={13} /> Open in mail</a>
                 )}
               </div>
             </footer>

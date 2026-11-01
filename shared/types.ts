@@ -189,7 +189,8 @@ export interface DashboardData {
   byIndustry: { industry: string; count: number }[];
   financeTrend: { period_month: string; fee_planned: number; fee_actual: number; tsa_cost: number }[] | null;
   upcoming: { task_id: string; title: string; project_id: string; code_name: string; due_date: string; status: WorkStatus; assignee_name?: string }[];
-  recentActivity: AuditEntry[];
+  /** Meaningful changes only (no sign-ins, reads or read-only AI calls), newest first, with a readable record name and link. */
+  recentActivity: (AuditEntry & { record_label?: string; href?: string; code_name?: string })[];
 }
 
 export type PikuContextType = 'global' | 'project' | 'stage' | 'activity' | 'task';

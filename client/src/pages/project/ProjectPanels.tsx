@@ -1,4 +1,5 @@
 /** Project-level side panels: edit project, team, finance. */
+import { legendText } from '../dashboard/widgets';
 import { useEffect, useMemo, useState } from 'react';
 import { Trash2, UserPlus, Sparkles } from 'lucide-react';
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -194,8 +195,8 @@ export function FinancePanel({ open, detail, onClose }: { open: boolean; detail:
                     <XAxis dataKey="period_month" tick={{ fontSize: 11, fill: CHART.muted }} axisLine={false} tickLine={false} />
                     <YAxis tickFormatter={(v) => money(v, cur)} width={64} tick={{ fontSize: 11, fill: CHART.muted }} axisLine={false} tickLine={false} />
                     <Tooltip formatter={(v: number) => money(v, cur, false)} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="fee_planned" name="Fees planned" fill="#D9D3CA" radius={[3, 3, 0, 0]} maxBarSize={18} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} formatter={legendText} />
+                    <Bar dataKey="fee_planned" name="Fees planned" fill="#C9CED6" radius={[3, 3, 0, 0]} maxBarSize={18} />
                     <Bar dataKey="fee_actual" name="Fees actual" fill={CHART.brand} radius={[3, 3, 0, 0]} maxBarSize={18} />
                     <Line dataKey="tsa_cost" name="Client TSA cost" stroke={CHART.blue} strokeWidth={2} dot={false} />
                   </ComposedChart>

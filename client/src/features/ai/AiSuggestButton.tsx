@@ -102,7 +102,7 @@ export default function AiSuggestButton({ request, onApply, label = 'Get AI sugg
           )}
           <div className="mt-3 flex gap-2">
             <button type="button" onClick={() => { onApply(result.draft, result); setResult(null); }}
-              className="inline-flex items-center gap-1 rounded-lg bg-piku px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#4d33bd]" data-testid="ai-suggest-apply">
+              className="inline-flex items-center gap-1 rounded-lg bg-piku px-3 py-1.5 text-xs font-semibold text-white hover:bg-piku/90" data-testid="ai-suggest-apply">
               <Check size={13} /> Apply suggestion
             </button>
             <button type="button" onClick={() => setResult(null)} className="inline-flex items-center gap-1 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink-soft hover:bg-sunken">

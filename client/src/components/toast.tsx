@@ -4,9 +4,9 @@ import clsx from 'clsx';
 import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react';
 
 type Kind = 'success' | 'error' | 'info';
-interface Toast { id: number; kind: Kind; message: string }
+interface Toast { id: number; kind: Kind; message: string; action?: { label: string; run: () => void } }
 interface ToastCtx {
-  success: (m: string) => void;
+  success: (m: string, action?: { label: string; run: () => void }) => void;
   error: (e: unknown) => void;
   info: (m: string) => void;
 }
@@ -16,13 +16,13 @@ let seq = 0;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<Toast[]>([]);
-  const push = useCallback((kind: Kind, message: string) => {
+  const push = useCallback((kind: Kind, message: string, action?: Toast['action']) => {
     const id = ++seq;
-    setItems((s) => [...s.slice(-3), { id, kind, message }]);
-    setTimeout(() => setItems((s) => s.filter((t) => t.id !== id)), kind === 'error' ? 6500 : 3500);
+    setItems((s) => [...s.slice(-3), { id, kind, message, action }]);
+    setTimeout(() => setItems((s) => s.filter((t) => t.id !== id)), kind === 'error' ? 6500 : action ? 6000 : 3500);
   }, []);
   const value = useMemo<ToastCtx>(() => ({
-    success: (m) => push('success', m),
+    success: (m, action) => push('success', m, action),
     info: (m) => push('info', m),
     error: (e) => push('error', e instanceof Error ? e.message : typeof e === 'string' ? e : 'Something went wrong. Try again.'),
   }), [push]);
@@ -38,7 +38,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             {t.kind === 'error' && <AlertTriangle size={16} className="mt-[1px] shrink-0 text-rose" />}
             {t.kind === 'info' && <Info size={16} className="mt-[1px] shrink-0 text-blue" />}
             <span className="flex-1">{t.message}</span>
-            <button className="text-ink-muted hover:text-ink" onClick={() => setItems((s) => s.filter((x) => x.id !== t.id))} aria-label="Dismiss"><X size={14} /></button>
+            {t.action && (
+              <button className="link shrink-0 text-[13px]" onClick={() => { t.action!.run(); setItems((s) => s.filter((x) => x.id !== t.id)); }}>{t.action.label}</button>
+            )}
+            <button className="rounded p-0.5 text-ink-muted hover:text-ink" onClick={() => setItems((s) => s.filter((x) => x.id !== t.id))} aria-label="Dismiss"><X size={14} /></button>
           </div>
         ))}
       </div>

@@ -1,6 +1,6 @@
 /** Knowledge hub: redacted learnings from closed projects. KM / Risk approve items before AI may use them. */
 import { useMemo, useState } from 'react';
-import { Search, BookOpen, Check, X } from 'lucide-react';
+import { Search, BookOpen, Check, X, ChevronRight } from 'lucide-react';
 import type { KnowledgeItem } from '@shared/types';
 import { KNOWLEDGE_TYPES, KNOWLEDGE_STATUS, INDUSTRIES, DEAL_TYPES } from '@shared/schema';
 import { useApi } from '../hooks/useApi';
@@ -84,7 +84,7 @@ export default function KnowledgePage() {
   return (
     <div>
       <div className="mb-4">
-        <h1 className="font-display text-[26px] font-semibold leading-tight">Knowledge hub</h1>
+        <h1 className="text-[24px] font-semibold leading-tight">Knowledge hub</h1>
         <p className="max-w-[80ch] text-[13px] text-ink-soft">Redacted, consent-checked learnings from closed projects: stage and activity templates, lessons, risks and metrics. Approved items feed AI suggestions when teams plan new work.{canReview && pending ? ` ${pending} item${pending === 1 ? ' is' : 's are'} waiting for your review.` : ''}</p>
       </div>
       <section className="card overflow-hidden">
@@ -101,12 +101,12 @@ export default function KnowledgePage() {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-[13px]">
-            <thead><tr><th className="th">Title</th><th className="th">Type</th><th className="th">Stage</th><th className="th">Industry</th><th className="th">Deal type</th><th className="th">Source</th><th className="th">Review</th><th className="th text-right">Used</th></tr></thead>
+            <thead><tr><th className="th">Title</th><th className="th">Type</th><th className="th">Stage</th><th className="th">Industry</th><th className="th">Deal type</th><th className="th">Source</th><th className="th">Review</th><th className="th text-right">Used</th><th className="th w-10"><span className="sr-only">Open</span></th></tr></thead>
             <tbody>
-              {loading && !data && Array.from({ length: 5 }).map((_, i) => <tr key={i}><td colSpan={8} className="td"><Skeleton className="h-5" /></td></tr>)}
+              {loading && !data && Array.from({ length: 5 }).map((_, i) => <tr key={i}><td colSpan={9} className="td"><Skeleton className="h-5" /></td></tr>)}
               {rows.map((k) => (
-                <tr key={k.knowledge_id} className="cursor-pointer hover:bg-canvas" onClick={() => setOpenId(k.knowledge_id)}>
-                  <td className="td"><div className="font-medium">{k.title}</div>{k.tags && <div className="text-[11.5px] text-ink-muted">{k.tags}</div>}</td>
+                <tr key={k.knowledge_id} className="row-action" onClick={() => setOpenId(k.knowledge_id)}>
+                  <td className="td"><button type="button" className="link text-left text-[13.5px]" onClick={(e) => { e.stopPropagation(); setOpenId(k.knowledge_id); }}>{k.title}</button>{k.tags && <div className="text-[11.5px] text-ink-muted">{k.tags}</div>}</td>
                   <td className="td"><Pill tone="bg-blue-soft text-blue">{k.item_type}</Pill></td>
                   <td className="td text-ink-soft">{k.stage_name || '–'}</td>
                   <td className="td text-ink-soft">{k.industry || '–'}</td>
@@ -114,6 +114,7 @@ export default function KnowledgePage() {
                   <td className="td text-ink-soft">{k.source_label || '–'}</td>
                   <td className="td"><Pill>{k.review_status}</Pill></td>
                   <td className="td num text-right">{k.times_used ?? 0}</td>
+                  <td className="td pr-4 text-right"><ChevronRight size={16} className="row-chevron ml-auto" aria-hidden /></td>
                 </tr>
               ))}
             </tbody>
