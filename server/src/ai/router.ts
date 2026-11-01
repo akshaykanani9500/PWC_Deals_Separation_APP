@@ -7,7 +7,8 @@
 
 export type Intent =
   | 'greeting' | 'help' | 'status' | 'overdue' | 'blocked' | 'who' | 'my_tasks' | 'finance' | 'tsa'
-  | 'contacts' | 'summary' | 'next_steps' | 'knowledge' | 'draft_email' | 'meeting' | 'risk' | 'list_projects';
+  | 'contacts' | 'summary' | 'next_steps' | 'knowledge' | 'draft_email' | 'meeting' | 'risk' | 'list_projects'
+  | 'chase' | 'pending' | 'decisions';
 
 export type Domain = 'tracker' | 'finance' | 'comms' | 'knowledge' | 'general';
 
@@ -23,13 +24,16 @@ const RULES: { intent: Intent; patterns: RegExp[] }[] = [
   { intent: 'draft_email', patterns: [/\b(draft|write|compose|send)\b.*\b(e-?mail|mail)\b/i, /\b(e-?mail|mail)\b.*\b(draft|likho|bhejo|banao)\b/i, /ईमेल|मेल\s*(लिखो|भेजो|बनाओ)/] },
   { intent: 'meeting', patterns: [/\b(meeting|schedule|invite|call prep|set up a call|book a call)\b/i, /\bmeeting\s*(rakho|fix|set)\b/i, /मीटिंग|बैठक/] },
   { intent: 'my_tasks', patterns: [/\bmy (tasks?|work|items?|actions?)\b/i, /\b(assigned to me|on my plate|what should i do)\b/i, /\bmera kaam\b|\bmere (task|kaam)\b|\bmujhe kya karna\b/i, /मेरे\s*(काम|टास्क)|मुझे क्या करना/] },
+  { intent: 'chase', patterns: [/\b(chase|follow[- ]?up with|nudge|remind|escalate|who (should|do) i (call|contact|ping|speak to|talk to|follow up|chase))\b/i, /\b(kis(se|ko) (follow|baat|yaad|bolu|bolun|pakdu))\b/i, /किससे (फ़ॉलो|बात)|किसको याद/] },
+  { intent: 'pending', patterns: [/\b(pending|remaining|left to do|still open|outstanding|not (yet )?done|incomplete|open items?)\b/i, /\b(baaki|baki|bacha|bachi)\b/i, /बाकी|लंबित|शेष/] },
   { intent: 'overdue', patterns: [/\b(overdue|late|delayed|behind|slipp?ing|missed)\b/i, /\b(deri|der se|late hai|pichhe)\b/i, /देरी|देर|लेट|पीछे/] },
   { intent: 'blocked', patterns: [/\b(block(ed|er|ers)?|stuck|waiting on|dependenc(y|ies))\b/i, /\b(ruka|atka|atke)\b/i, /रुका|अटका|अटके|रुकावट/] },
-  { intent: 'risk', patterns: [/\b(risk|risks|red flag|at risk|issues?|problems?|concerns?)\b/i, /\b(dikkat|samasya|khatra)\b/i, /जोखिम|खतरा|समस्या|दिक्कत/] },
+  { intent: 'risk', patterns: [/\b(risk|risks|red flag|at risk|issues?|problems?|concerns?|attention|worr(y|ied|ying)|trouble|watch ?out)\b/i, /\b(dikkat|samasya|khatra)\b/i, /जोखिम|खतरा|समस्या|दिक्कत/] },
   { intent: 'finance', patterns: [/\b(fee|fees|budget|billed|billing|cost|costs|finance|financial|money|spend|funding gap|gap|revenue|margin)\b/i, /\b(paisa|kharcha|kitna paisa|budget)\b/i, /पैसा|खर्च|बजट|लागत|फीस/] },
   { intent: 'tsa', patterns: [/\btsa\b/i, /\b(transition service|exit date|extension|uplift)\b/i, /टीएसए/] },
   { intent: 'contacts', patterns: [/\b(contact|contacts|phone|number|call whom|email address|reach)\b/i, /\b(number do|phone number|kisse baat)\b/i, /फ़ोन|फोन|नंबर|संपर्क/] },
   { intent: 'who', patterns: [/\b(who|owner|owns|assignee|assigned|responsible|in charge|lead(s|ing)?)\b/i, /\b(kaun|kon|kiske paas|kiska)\b/i, /कौन|किसके|ज़िम्मेदार|जिम्मेदार/] },
+  { intent: 'decisions', patterns: [/\b(decision|decisions|decided|agreed|what was agreed|minutes|meeting notes)\b/i, /\b(faisla|nirnay)\b/i, /निर्णय|फैसला|फ़ैसला/] },
   { intent: 'summary', patterns: [/\b(summar(y|ise|ize)|recap|overview|brief|what happened|catch me up|highlights?)\b/i, /\b(saar|summary do|samjhao|kya hua)\b/i, /सारांश|सार|क्या हुआ|समझाओ/] },
   { intent: 'next_steps', patterns: [/\b(next steps?|what'?s next|upcoming|due (this|next) week|pending|remaining|to do)\b/i, /\b(aage kya|agla kadam|baaki|baki|pending)\b/i, /आगे क्या|अगला|बाकी|लंबित/] },
   { intent: 'status', patterns: [/\b(status|progress|how (is|are)|where are we|percent|%|complete|completion|rag|health|on track)\b/i, /\b(status batao|kitna hua|kahan tak|kaisa chal)\b/i, /स्टेटस|स्थिति|प्रगति|कितना हुआ|कहाँ तक/] },
@@ -42,7 +46,7 @@ const RULES: { intent: Intent; patterns: RegExp[] }[] = [
 const DOMAIN_OF: Record<Intent, Domain[]> = {
   greeting: ['general'], help: ['general'], status: ['tracker'], overdue: ['tracker'], blocked: ['tracker'],
   who: ['tracker'], my_tasks: ['tracker'], finance: ['finance'], tsa: ['finance'], contacts: ['comms'],
-  summary: ['tracker', 'comms'], next_steps: ['tracker'], knowledge: ['knowledge'], draft_email: ['comms'],
+  summary: ['tracker', 'comms'], decisions: ['comms'], next_steps: ['tracker'], chase: ['tracker'], pending: ['tracker'], knowledge: ['knowledge'], draft_email: ['comms'],
   meeting: ['comms', 'tracker'], risk: ['tracker', 'comms'], list_projects: ['tracker'],
 };
 
@@ -61,10 +65,14 @@ export function classify(message: string, hasContext: boolean): RouteDecision {
   // Generic "what is / how do" only means knowledge when nothing more specific was asked.
   const explicitKnowledge = /\b(explain|define|meaning|best practice|playbook|lessons?|learned|similar (deal|project)s?|past deals?|template|kya hota|matlab)\b|सबक|मतलब|क्या होता/i.test(message);
   if (list.includes('knowledge') && list.length > 1 && !explicitKnowledge) list = list.filter((i) => i !== 'knowledge');
-  if (!list.length) list = [hasContext ? 'status' : 'help'];
+  // A question with no known keyword on a screen gets the full picture of that screen, not a bare status line.
+  // Unknown question: on a screen summarise it; on the dashboard give the portfolio picture (only real "help" asks get help).
+  if (!list.length) list = hasContext || message.trim().split(/\s+/).length > 3 ? ['summary'] : ['help'];
+  // "who should I chase" is a chase question, not a list of owners
+  if (list.includes('chase')) list = list.filter((i) => i !== 'who');
 
   // Priority order decides the primary intent
-  const order: Intent[] = ['draft_email', 'meeting', 'my_tasks', 'contacts', 'tsa', 'finance', 'overdue', 'blocked', 'risk', 'who', 'summary', 'next_steps', 'list_projects', 'status', 'knowledge', 'help', 'greeting'];
+  const order: Intent[] = ['draft_email', 'meeting', 'my_tasks', 'contacts', 'tsa', 'finance', 'chase', 'overdue', 'blocked', 'risk', 'who', 'pending', 'decisions', 'summary', 'next_steps', 'list_projects', 'status', 'knowledge', 'help', 'greeting'];
   const primary = order.find((i) => list.includes(i)) ?? list[0];
 
   const domains = Array.from(new Set(list.flatMap((i) => DOMAIN_OF[i])));
@@ -72,7 +80,7 @@ export function classify(message: string, hasContext: boolean): RouteDecision {
 
   let level: 1 | 2 | 3 = 1;
   if (domains.length >= 2 || list.length >= 3 || /\b(compare|why|recommend|analy[sz]e|trend|should we)\b|क्यों|तुलना/i.test(message)) level = 3;
-  else if (['summary', 'risk', 'next_steps', 'overdue', 'blocked', 'draft_email', 'meeting'].includes(primary) || portfolioWide) level = 2;
+  else if (['summary', 'risk', 'next_steps', 'overdue', 'blocked', 'draft_email', 'meeting', 'chase', 'pending', 'decisions'].includes(primary) || portfolioWide) level = 2;
 
   return { intents: list, primary, level, domains, portfolioWide };
 }

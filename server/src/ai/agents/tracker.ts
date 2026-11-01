@@ -6,6 +6,7 @@ import type { AgentInput, AgentOutput } from './types';
 import { emptyOutput } from './types';
 
 const MAX = 6;
+const pl = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export async function trackerAgent(input: AgentInput): Promise<AgentOutput> {
   const { data, lang, intents, auth, message } = input;
@@ -20,9 +21,26 @@ export async function trackerAgent(input: AgentInput): Promise<AgentOutput> {
   const addTaskSource = (x: Task) => out.sources.push({ type: 'task', id: x.task_id, label: x.title, href: taskHref(x) });
   const taskLine = (x: Task, withProject: boolean) =>
     `${x.title}${withProject ? ` (${code(x.project_id)})` : ''} - ${userName(users, x.assignee_user_id)}, ${t(lang, 'due', 'नियत तिथि')} ${fmtDate(x.due_date)}`;
+  const reason = (x: Task) => (x.dependency_notes ? `. ${t(lang, 'Waiting on', 'निर्भर')}: ${x.dependency_notes}` : x.pending_notes ? `. ${t(lang, 'Pending', 'बाकी')}: ${x.pending_notes}` : '');
   const multi = scope.type === 'global';
 
   const has = (i: string) => intents.includes(i as any);
+
+  // ---------- A SPECIFIC TASK (named in the question, or "it/that" from the last answer) ----------
+  const ft = input.focusTask;
+  if (ft) {
+    const late = isOverdue(ft);
+    out.lines.push(t(lang,
+      `**${ft.title}** is ${ft.status} (${pct(ft.status === 'Done' ? 100 : ft.percent_complete)}), assigned to **${userName(users, ft.assignee_user_id)}**, due **${fmtDate(ft.due_date)}**${late ? ' - overdue' : ''}${ft.day1_critical === 'Y' ? ', Day-1 critical' : ''}.`,
+      `**${ft.title}** की स्थिति ${ft.status} (${pct(ft.status === 'Done' ? 100 : ft.percent_complete)}) है, **${userName(users, ft.assignee_user_id)}** के पास, अंतिम तिथि **${fmtDate(ft.due_date)}**${late ? ' - देरी में' : ''}${ft.day1_critical === 'Y' ? ', Day-1 क्रिटिकल' : ''}।`));
+    if (ft.dependency_notes) out.lines.push(`- ${t(lang, 'Waiting on', 'निर्भरता')}: ${ft.dependency_notes}`);
+    if (ft.pending_notes) out.lines.push(`- ${t(lang, 'Pending', 'बाकी')}: ${ft.pending_notes}`);
+    if (ft.done_notes) out.lines.push(`- ${t(lang, 'Done so far', 'अब तक पूरा')}: ${ft.done_notes}`);
+    if (late || ft.status === 'Blocked') out.lines.push(t(lang, `Follow up with ${userName(users, ft.assignee_user_id)}${ft.dependency_notes ? ' on the dependency above' : ''}.`, `${userName(users, ft.assignee_user_id)} से फ़ॉलो-अप करें।`));
+    out.facts.push(`The user is asking about task "${ft.title}" (${code(ft.project_id)}): status ${ft.status}, ${pct(ft.percent_complete)} done, assignee ${userName(users, ft.assignee_user_id)}, due ${ft.due_date}${late ? ' (overdue)' : ''}, priority ${ft.priority}, Day-1 critical ${ft.day1_critical}, done: ${ft.done_notes ?? '-'}, pending: ${ft.pending_notes ?? '-'}, waiting on: ${ft.dependency_notes ?? '-'}.`);
+    addTaskSource(ft);
+    return out;
+  }
 
   // ---------- STATUS ----------
   if (has('status') || has('list_projects') || has('summary')) {
@@ -30,7 +48,7 @@ export async function trackerAgent(input: AgentInput): Promise<AgentOutput> {
       const active = data.projects.filter((p) => p.status !== 'Closed');
       const n = (r: string) => active.filter((p) => p.rag === r).length;
       out.lines.push(t(lang,
-        `You can see ${active.length} active project(s): ${n('Red')} Red, ${n('Amber')} Amber, ${n('Green')} Green.`,
+        `You can see ${pl(active.length, 'active project', 'active projects')}: ${n('Red')} Red, ${n('Amber')} Amber, ${n('Green')} Green.`,
         `आप ${active.length} सक्रिय प्रोजेक्ट देख सकते हैं: ${n('Red')} लाल, ${n('Amber')} एम्बर, ${n('Green')} हरे।`));
       out.facts.push(`Visible active projects: ${active.length}; RAG Red ${n('Red')}, Amber ${n('Amber')}, Green ${n('Green')}.`);
       for (const p of active.slice(0, 8)) {
@@ -95,7 +113,7 @@ export async function trackerAgent(input: AgentInput): Promise<AgentOutput> {
   if (has('my_tasks')) {
     const mine = open.filter((x) => x.assignee_user_id === auth.user.user_id).sort((a, b) => (a.due_date || '9').localeCompare(b.due_date || '9'));
     out.lines.push(mine.length
-      ? t(lang, `You have ${mine.length} open task(s). Most urgent:`, `आपके ${mine.length} खुले टास्क हैं। सबसे ज़रूरी:`)
+      ? t(lang, `You have ${pl(mine.length, 'open task', 'open tasks')}. Most urgent:`, `आपके ${mine.length} खुले टास्क हैं। सबसे ज़रूरी:`)
       : t(lang, 'You have no open tasks assigned to you here.', 'यहाँ आपको कोई खुला टास्क नहीं सौंपा गया है।'));
     for (const x of mine.slice(0, MAX)) { out.lines.push(`- ${taskLine(x, true)}${isOverdue(x) ? ' ⚠' : ''}`); out.facts.push(`My task: ${taskLine(x, true)}, status ${x.status}`); addTaskSource(x); }
   }
@@ -103,18 +121,18 @@ export async function trackerAgent(input: AgentInput): Promise<AgentOutput> {
   // ---------- OVERDUE ----------
   if (has('overdue') || has('risk')) {
     out.lines.push(overdue.length
-      ? t(lang, `${overdue.length} task(s) are overdue:`, `${overdue.length} टास्क देरी में हैं:`)
+      ? t(lang, `${overdue.length === 1 ? '1 task is' : `${overdue.length} tasks are`} overdue:`, `${overdue.length} टास्क देरी में हैं:`)
       : t(lang, 'Nothing is overdue here.', 'यहाँ कुछ भी देरी में नहीं है।'));
-    for (const x of overdue.slice(0, MAX)) { out.lines.push(`- ${taskLine(x, multi)}`); out.facts.push(`Overdue: ${taskLine(x, true)}, priority ${x.priority}, Day-1 critical ${x.day1_critical}`); addTaskSource(x); }
+    for (const x of overdue.slice(0, MAX)) { out.lines.push(`- ${taskLine(x, multi)}${reason(x)}`); out.facts.push(`Overdue: ${taskLine(x, true)}, priority ${x.priority}, Day-1 critical ${x.day1_critical}`); addTaskSource(x); }
   }
 
   // ---------- BLOCKED ----------
   if (has('blocked') || has('risk')) {
     out.lines.push(blocked.length
-      ? t(lang, `${blocked.length} task(s) are blocked:`, `${blocked.length} टास्क रुके हुए हैं:`)
+      ? t(lang, `${blocked.length === 1 ? '1 task is' : `${blocked.length} tasks are`} blocked:`, `${blocked.length} टास्क रुके हुए हैं:`)
       : t(lang, 'No blocked tasks.', 'कोई टास्क रुका हुआ नहीं है।'));
     for (const x of blocked.slice(0, MAX)) {
-      out.lines.push(`- ${x.title}${multi ? ` (${code(x.project_id)})` : ''}${x.dependency_notes ? ` - ${t(lang, 'waiting on', 'निर्भर')}: ${x.dependency_notes}` : ''}`);
+      out.lines.push(`- **${x.title}**${multi ? ` (${code(x.project_id)})` : ''} - ${userName(users, x.assignee_user_id)}, ${t(lang, 'due', 'नियत')} ${fmtDate(x.due_date)}${x.dependency_notes ? `. ${t(lang, 'Waiting on', 'निर्भर')}: ${x.dependency_notes}` : ''}`);
       out.facts.push(`Blocked: ${x.title} (${code(x.project_id)}), assignee ${userName(users, x.assignee_user_id)}, waiting on: ${x.dependency_notes ?? 'not recorded'}`);
       addTaskSource(x);
     }
@@ -124,7 +142,8 @@ export async function trackerAgent(input: AgentInput): Promise<AgentOutput> {
   if (has('risk')) {
     const d1 = open.filter((x) => x.day1_critical === 'Y');
     if (d1.length) {
-      out.lines.push(t(lang, `${d1.length} Day-1 critical item(s) are still open.`, `${d1.length} Day-1 क्रिटिकल आइटम अभी खुले हैं।`));
+      out.lines.push(t(lang, `${d1.length === 1 ? '1 Day-1 critical item is' : `${d1.length} Day-1 critical items are`} still open:`, `${d1.length} Day-1 क्रिटिकल आइटम अभी खुले हैं:`));
+      for (const x of d1.slice(0, MAX)) { out.lines.push(`- ${taskLine(x, multi)} (${x.status})`); addTaskSource(x); }
       out.facts.push(`Open Day-1 critical tasks: ${d1.length}: ${d1.slice(0, 5).map((x) => x.title).join('; ')}`);
     }
     if (scope.type === 'global') {
@@ -138,6 +157,60 @@ export async function trackerAgent(input: AgentInput): Promise<AgentOutput> {
     }
   }
 
+  // ---------- SUMMARY DETAIL (stage / activity / task) ----------
+  if (has('summary') && (scope.type === 'activity' || scope.type === 'stage')) {
+    const done = data.tasks.filter((x) => x.status === 'Done').sort((a, b) => (b.completed_date || '').localeCompare(a.completed_date || ''));
+    if (done.length) {
+      out.lines.push(t(lang, `Done (${done.length}):`, `पूरे (${done.length}):`));
+      for (const x of done.slice(0, 4)) out.lines.push(`- ${x.title}${x.completed_date ? ` (${fmtDate(x.completed_date)})` : ''}`);
+    }
+    if (blocked.length) {
+      out.lines.push(t(lang, `Blocked (${blocked.length}):`, `रुके हुए (${blocked.length}):`));
+      for (const x of blocked.slice(0, MAX)) { out.lines.push(`- **${x.title}** - ${userName(users, x.assignee_user_id)}${x.dependency_notes ? `. ${t(lang, 'Waiting on', 'निर्भर')}: ${x.dependency_notes}` : ''}`); addTaskSource(x); }
+    }
+    const lateOnly = overdue.filter((x) => x.status !== 'Blocked');
+    if (lateOnly.length) {
+      out.lines.push(t(lang, `Overdue (${lateOnly.length}):`, `देरी में (${lateOnly.length}):`));
+      for (const x of lateOnly.slice(0, MAX)) { out.lines.push(`- ${taskLine(x, false)}`); addTaskSource(x); }
+    }
+  }
+  if (has('summary') && scope.type === 'project') {
+    const attention = [...blocked, ...overdue.filter((x) => x.status !== 'Blocked')];
+    if (attention.length) {
+      out.lines.push(t(lang, 'Needs attention:', 'ध्यान देने योग्य:'));
+      for (const x of attention.slice(0, MAX)) { out.lines.push(`- ${taskLine(x, false)} (${x.status === 'Blocked' ? t(lang, 'blocked', 'रुका') : t(lang, 'overdue', 'देरी')})`); addTaskSource(x); }
+    }
+  }
+
+  // ---------- CHASE: owners of overdue / blocked work ----------
+  if (has('chase')) {
+    const hot = [...blocked, ...overdue.filter((x) => x.status !== 'Blocked')];
+    if (!hot.length) out.lines.push(t(lang, 'Nobody needs chasing here - nothing is overdue or blocked.', 'यहाँ किसी से फ़ॉलो-अप की ज़रूरत नहीं - कुछ भी देरी में या रुका हुआ नहीं है।'));
+    else {
+      const byPerson = new Map<string, Task[]>();
+      for (const x of hot) { const n = userName(users, x.assignee_user_id); byPerson.set(n, [...(byPerson.get(n) ?? []), x]); }
+      out.lines.push(t(lang, byPerson.size === 1 ? 'Chase this person:' : `Chase these ${byPerson.size} people:`, `इन ${byPerson.size} लोगों से फ़ॉलो-अप करें:`));
+      for (const [n, items] of [...byPerson.entries()].sort((a, b) => b[1].length - a[1].length)) {
+        out.lines.push(`- **${n}**: ${items.map((x) => `${x.title}${multi ? ` [${code(x.project_id)}]` : ''} (${x.status === 'Blocked' ? t(lang, 'blocked', 'रुका') : `${t(lang, 'due', 'नियत')} ${fmtDate(x.due_date)}`})`).join('; ')}`);
+        out.facts.push(`Chase ${n}: ${items.map((x) => `${x.title} ${x.status} due ${x.due_date}`).join('; ')}`);
+        items.forEach(addTaskSource);
+      }
+    }
+  }
+
+  // ---------- PENDING ----------
+  if (has('pending') && scope.type !== 'task') {
+    const list = [...open].sort((a, b) => (a.due_date || '9').localeCompare(b.due_date || '9'));
+    out.lines.push(list.length ? t(lang, `${pl(list.length, 'item is', 'items are')} still open:`, `${list.length} काम अभी बाकी हैं:`) : t(lang, 'Nothing is pending here - all tasks are done.', 'यहाँ कुछ बाकी नहीं - सभी टास्क पूरे हैं।'));
+    for (const x of list.slice(0, 8)) { out.lines.push(`- ${taskLine(x, multi)} (${x.status})${x.pending_notes ? ` - ${x.pending_notes}` : ''}`); addTaskSource(x); }
+  }
+  if (has('pending') && scope.type === 'task' && scope.task && !has('status')) {
+    const x = scope.task;
+    out.lines.push(x.pending_notes ? `${t(lang, 'Pending on', 'बाकी')} **${x.title}**: ${x.pending_notes}` : t(lang, `Nothing is recorded as pending on "${x.title}" (status ${x.status}).`, `"${x.title}" पर कुछ बाकी दर्ज नहीं है (स्थिति ${x.status})।`));
+    if (x.dependency_notes) out.lines.push(`${t(lang, 'Waiting on', 'निर्भरता')}: ${x.dependency_notes}`);
+    if (x.done_notes) out.lines.push(`${t(lang, 'Done so far', 'अब तक पूरा')}: ${x.done_notes}`);
+  }
+
   // ---------- WHO ----------
   if (has('who')) {
     const lower = message.toLowerCase();
@@ -147,7 +220,7 @@ export async function trackerAgent(input: AgentInput): Promise<AgentOutput> {
     });
     if (person) {
       const theirs = open.filter((x) => x.assignee_user_id === person.user_id);
-      out.lines.push(t(lang, `${person.full_name} has ${theirs.length} open task(s) here:`, `${person.full_name} के पास यहाँ ${theirs.length} खुले टास्क हैं:`));
+      out.lines.push(t(lang, `${person.full_name} has ${pl(theirs.length, 'open task', 'open tasks')} here:`, `${person.full_name} के पास यहाँ ${theirs.length} खुले टास्क हैं:`));
       for (const x of theirs.slice(0, MAX)) { out.lines.push(`- ${taskLine(x, multi)}`); out.facts.push(`${person.full_name} task: ${taskLine(x, true)} status ${x.status}`); addTaskSource(x); }
     } else if (scope.type === 'task' && scope.task) {
       out.lines.push(t(lang, `This task is assigned to ${userName(users, scope.task.assignee_user_id)}.`, `यह टास्क ${userName(users, scope.task.assignee_user_id)} को सौंपा गया है।`));

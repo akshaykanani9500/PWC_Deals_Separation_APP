@@ -5,10 +5,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
-import { Pencil, ListPlus, LayoutGrid, Ban, CalendarDays, ChevronRight, Users, MessagesSquare } from 'lucide-react';
-import type { Communication, Contact, ProjectDetail, Stage, StageDetail } from '@shared/types';
+import { Pencil, ListPlus, LayoutGrid, Ban, CalendarDays, CalendarClock, ChevronRight, Users, MessagesSquare, Flag, Layers } from 'lucide-react';
+import type { ActivityDetail, Communication, Contact, ProjectDetail, Stage, StageDetail } from '@shared/types';
 import { useApi } from '../../hooks/useApi';
-import { post } from '../../lib/api';
+import { get, post } from '../../lib/api';
 import { useSession } from '../../lib/session';
 import { Avatar, Button, Pill, Skeleton, Progress, EmptyState, onTabListKey } from '../../components/ui';
 import { useToast } from '../../components/toast';
@@ -21,6 +21,11 @@ import { ActivityEditorPanel } from './ActivityEditorPanel';
 import { ContactList, PanelSection, ProjectSnapshot, WithRightPanel } from './RightPanel';
 
 type StageRow = ProjectDetail['stages'][number];
+
+/** Activity bar items look and behave like buttons: filled, bordered, raised on hover, pressed on click. */
+const barBtn = 'inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-[13px] transition-[background-color,border-color,box-shadow,transform] duration-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring focus-visible:ring-offset-1 active:translate-y-px active:shadow-none';
+const barIdle = 'border-line-strong bg-sunken font-medium text-ink shadow-card hover:border-ink-muted hover:bg-surface hover:shadow-raise';
+const barOn = 'border-brand bg-brand-soft font-semibold text-brand-dark shadow-raise -translate-y-px';
 
 export default function StageView({ projectId, stage, detail, activityId, version, onChanged, onActivityName }: {
   projectId: string; stage: StageRow; detail: ProjectDetail; activityId?: string; version: number; onChanged: () => void;
@@ -42,8 +47,7 @@ export default function StageView({ projectId, stage, detail, activityId, versio
 
       <div className="sticky top-[161px] z-20 flex items-center gap-2 border-b border-line bg-surface/95 px-4 py-2.5 backdrop-blur">
         <Link to={base} aria-current={!activityId ? 'page' : undefined}
-          className={clsx('inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-3 text-[13px] font-medium transition-colors',
-            !activityId ? 'border-ink bg-ink text-white' : 'border-line-strong bg-surface text-ink hover:bg-sunken')}>
+          className={clsx(barBtn, !activityId ? barOn : barIdle)}>
           <LayoutGrid size={14} aria-hidden /> Stage overview
         </Link>
         <span className="h-6 w-px shrink-0 bg-line" aria-hidden />
@@ -57,10 +61,9 @@ export default function StageView({ projectId, stage, detail, activityId, versio
                 aria-label={`${a.name}, ${pct}% complete${a.status === 'Blocked' ? ', has blocked tasks' : ''}`}
                 to={`${base}/activities/${a.activity_id}`}
                 title={`${a.name}${a.owner_name ? ` (owner: ${a.owner_name})` : ''}`}
-                className={clsx('inline-flex h-9 max-w-[280px] shrink-0 items-center gap-2 rounded-md border px-3 text-[13px] transition-colors',
-                  on ? 'border-brand bg-brand-soft font-semibold text-brand-dark' : 'border-line-strong/70 bg-surface text-ink hover:border-ink-muted hover:bg-sunken')}>
+                className={clsx(barBtn, 'max-w-[280px]', on ? barOn : barIdle)}>
                 <span className="truncate">{a.name}</span>
-                <span className={clsx('num shrink-0 rounded px-1.5 text-[11.5px] font-medium', pct >= 100 ? 'bg-green-soft text-green' : on ? 'bg-surface text-brand-dark' : 'bg-sunken text-ink-soft')}>{pct}%</span>
+                <span className={clsx('num shrink-0 rounded px-1.5 text-[11.5px] font-medium', pct >= 100 ? 'bg-green-soft text-green' : on ? 'bg-surface text-brand-dark' : 'bg-surface text-ink-soft')}>{pct}%</span>
                 {a.status === 'Blocked' && <Ban size={13} className="shrink-0 text-rose" aria-label="Has blocked tasks" />}
               </Link>
             );
@@ -68,7 +71,7 @@ export default function StageView({ projectId, stage, detail, activityId, versio
         </ScrollTabs>
         <button onClick={() => setEditor(true)} disabled={!canEditActivities}
           title={canEditActivities ? 'Add, edit, reorder or remove activities' : 'Your role cannot change activities in this stage'}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-line-strong bg-surface px-3 text-[13px] font-medium shadow-card hover:bg-sunken disabled:cursor-not-allowed disabled:opacity-45">
+          className={clsx(barBtn, 'border-line-strong bg-surface font-medium text-ink shadow-card hover:border-ink-muted hover:bg-sunken hover:shadow-raise disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none disabled:hover:bg-surface')}>
           <Pencil size={14} aria-hidden /> Edit activities
         </button>
       </div>
@@ -139,28 +142,111 @@ function StageOverview({ data, detail, base, version, canEdit, onPlan }: {
     </div>
   );
   return (
-    <WithRightPanel label="Stage context" main={main} panel={<StagePanel detail={detail} stage={data.stage} version={version} />} />
+    <WithRightPanel label="Stage context" main={main} panel={<StagePanel detail={detail} stageDetail={data} base={base} version={version} />} />
   );
 }
 
-function StagePanel({ detail, stage, version }: { detail: ProjectDetail; stage: Stage; version: number }) {
+function StagePanel({ detail, stageDetail, base, version }: { detail: ProjectDetail; stageDetail: StageDetail; base: string; version: number }) {
+  const stage = stageDetail.stage;
   const pid = detail.project.project_id;
   const contacts = useApi<Contact[]>(`/projects/${pid}/contacts`, [pid]);
   const comms = useApi<Communication[]>(`/projects/${pid}/communications?stageId=${stage.stage_id}`, [pid, stage.stage_id, version]);
   return (
     <>
-      <ProjectSnapshot detail={detail} version={version} />
+      <StageContextCard stageDetail={stageDetail} base={base} version={version} />
       <AiSummaryCard scope="stage" id={stage.stage_id} />
       <AiActions scope="stage" id={stage.stage_id} />
+      <PanelSection title="Recent communications" icon={<MessagesSquare size={14} />}>
+        {comms.loading && !comms.data ? <Skeleton className="h-16" /> : <CommList comms={(comms.data ?? []).slice(0, 5)} />}
+      </PanelSection>
       {(contacts.data?.length ?? 0) > 0 && (
         <PanelSection title="Contacts" icon={<Users size={14} />}>
           <ContactList contacts={contacts.data!.slice(0, 5)} />
         </PanelSection>
       )}
-      <PanelSection title="Recent communications" icon={<MessagesSquare size={14} />}>
-        {comms.loading && !comms.data ? <Skeleton className="h-16" /> : <CommList comms={(comms.data ?? []).slice(0, 5)} />}
-      </PanelSection>
+      <ProjectSnapshot detail={detail} version={version} />
     </>
+  );
+}
+
+/** Per-activity open/blocked/overdue counts for the stage panel (one request per activity, loaded in parallel). */
+function useActivityCounts(ids: string[], version: number) {
+  const [counts, setCounts] = useState<Record<string, ActivityDetail['stats']>>({});
+  const key = ids.join(',');
+  useEffect(() => {
+    let live = true;
+    Promise.all(ids.map((id) => get<ActivityDetail>(`/activities/${id}`).then((d) => [id, d.stats] as const).catch(() => null)))
+      .then((rows) => { if (live) setCounts(Object.fromEntries(rows.filter(Boolean) as [string, ActivityDetail['stats']][])); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, version]);
+  return counts;
+}
+
+/** First card of the stage panel: an overview of every activity in the stage and the gate. */
+function StageContextCard({ stageDetail, base, version }: { stageDetail: StageDetail; base: string; version: number }) {
+  const stage = stageDetail.stage;
+  const acts = [...stageDetail.activities].sort((a, b) => a.sort_order - b.sort_order);
+  const counts = useActivityCounts(acts.map((a) => a.activity_id), version);
+  const totals = Object.values(counts).reduce((t, c) => ({ blocked: t.blocked + c.blocked, overdue: t.overdue + c.overdue }), { blocked: 0, overdue: 0 });
+  const tasks = acts.reduce((n, a) => n + a.task_count, 0);
+  const done = acts.reduce((n, a) => n + a.done_count, 0);
+  const complete = acts.filter((a) => (a.percent_complete ?? 0) >= 100).length;
+  const loaded = Object.keys(counts).length > 0;
+  return (
+    <section className="rounded-lg border border-brand/40 bg-surface p-3.5 shadow-card" data-testid="stage-context-card" aria-label={`Overview of stage ${stage.name}`}>
+      <div className="mb-1 flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-brand-dark"><Layers size={13} aria-hidden /> This stage</div>
+      <h4 className="text-[14px] font-semibold leading-snug">{stage.name}</h4>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5"><Pill>{stage.status ?? 'Not Started'}</Pill></div>
+      <div className="mt-2.5"><Progress value={stage.percent_complete} /></div>
+      <dl className="mt-3 grid grid-cols-4 gap-1.5 text-center">
+        {([['Activities', `${complete}/${acts.length}`, ''], ['Tasks done', `${done}/${tasks}`, ''], ['Blocked', loaded ? totals.blocked : '–', 'text-rose'], ['Overdue', loaded ? totals.overdue : '–', 'text-rose']] as const).map(([k, v, tone]) => (
+          <div key={k} className="rounded-md bg-sunken px-1 py-1.5">
+            <dt className="text-[11px] leading-tight text-ink-muted">{k}</dt>
+            <dd className={clsx('num text-[14px] font-semibold', typeof v === 'number' && v ? tone : '')}>{v}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <div className="mt-3 rounded-md border border-line px-2.5 py-2 text-[12.5px]">
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1.5 font-medium"><Flag size={13} className="text-ink-muted" aria-hidden /> Stage gate</span>
+          <Pill>{stage.gate_status ?? 'Not Ready'}</Pill>
+        </div>
+        {stage.gate_criteria && <p className="mt-1 text-[12px] text-ink-soft">{stage.gate_criteria}</p>}
+      </div>
+
+      {acts.length > 0 && (
+        <div className="mt-3">
+          <div className="mb-1 text-[12px] font-semibold text-ink-soft">Activities</div>
+          <ul className="space-y-1">
+            {acts.map((a) => {
+              const c = counts[a.activity_id];
+              const late = isOverdue(a.due_date, a.status);
+              const pct = Math.round(a.percent_complete ?? 0);
+              return (
+                <li key={a.activity_id}>
+                  <Link to={`${base}/activities/${a.activity_id}`} className="group block rounded-md px-2 py-1.5 hover:bg-sunken focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
+                    aria-label={`Open activity ${a.name}, ${pct}% complete`}>
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[12.5px] font-medium text-link group-hover:underline">{a.name}</span>
+                      <span className={clsx('num shrink-0 rounded px-1.5 text-[11.5px] font-medium', pct >= 100 ? 'bg-green-soft text-green' : 'bg-sunken text-ink-soft')}>{pct}%</span>
+                    </span>
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-ink-muted">
+                      <span>{a.status ?? 'Not Started'}</span>
+                      {a.owner_name && <span className="truncate">· {a.owner_name}</span>}
+                      <span className={clsx('num', late && 'font-medium text-rose')}>· due {date(a.due_date)}{late ? ' (late)' : ''}</span>
+                      {c?.blocked ? <span className="inline-flex items-center gap-0.5 font-medium text-rose"><Ban size={11} aria-hidden />{c.blocked} blocked</span> : null}
+                      {c?.overdue ? <span className="inline-flex items-center gap-0.5 font-medium text-rose"><CalendarClock size={11} aria-hidden />{c.overdue} overdue</span> : null}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
 

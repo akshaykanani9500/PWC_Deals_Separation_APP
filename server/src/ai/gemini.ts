@@ -156,17 +156,19 @@ export async function geminiGenerate(prompt: string, opts: GeminiOptions = {}): 
   if (Date.now() < st.pausedUntil) return null;
   const deadline = Date.now() + TOTAL_BUDGET_MS;
 
-  const body: Record<string, unknown> = {
+  // Newer Gemini models "think" before answering and those tokens count against maxOutputTokens, so a small limit
+  // cuts the visible answer mid-sentence. Callers' small values are only a length wish (their prompts already
+  // ask for a short answer); the real limit is never below MIN_OUTPUT_TOKENS.
+  const limit = Math.max(opts.maxOutputTokens ?? 0, MIN_OUTPUT_TOKENS);
+  const makeBody = (maxOutputTokens: number): Record<string, unknown> => ({
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: opts.temperature ?? 0.3,
-      // Newer Gemini models "think" before answering and those tokens count against this limit,
-      // so keep it generous or the visible answer comes back empty.
-      maxOutputTokens: opts.maxOutputTokens ?? 8192,
+      maxOutputTokens,
       ...(opts.json ? { responseMimeType: 'application/json' } : {}),
     },
-  };
-  if (opts.system) body.systemInstruction = { parts: [{ text: opts.system }] };
+    ...(opts.system ? { systemInstruction: { parts: [{ text: opts.system }] } } : {}),
+  });
 
   const attempts: string[] = [];
   for (const model of await modelsForKey(key, st)) {
@@ -175,29 +177,29 @@ export async function geminiGenerate(prompt: string, opts: GeminiOptions = {}): 
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), Math.min(TIMEOUT_MS, left));
     try {
-      const res = await fetch(`${ENDPOINT}/${encodeURIComponent(model)}:generateContent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify(body),
-        signal: ctrl.signal,
-      });
-      if (!res.ok) {
-        const detail = await readDetail(res);
-        attempts.push(`${model}: ${describeHttpError(res.status, detail)}`);
+      let r = await callModel(key, model, makeBody(limit), ctrl.signal);
+      if (r.ok && r.finish === 'MAX_TOKENS' && Date.now() < deadline) {
+        // Cut off by the token limit: one retry on the same model with much more room.
+        r = await callModel(key, model, makeBody(RETRY_OUTPUT_TOKENS), ctrl.signal);
+      }
+      if (!r.ok) {
+        attempts.push(`${model}: ${describeHttpError(r.status, r.detail)}`);
         st.lastError = attempts.join(' | ');
-        if (isKeyRejection(res.status, detail)) {
+        if (isKeyRejection(r.status, r.detail)) {
           // A bad key fails the same way for every model: stop and pause instead of retrying.
           st.pausedUntil = Date.now() + KEY_COOLDOWN_MS;
           return null;
         }
-        if (isModelUnavailable(res.status, detail)) st.unavailable.add(model);
-        else if (res.status === 429) st.quotaUntil.set(model, Date.now() + QUOTA_COOLDOWN_MS);
+        if (isModelUnavailable(r.status, r.detail)) st.unavailable.add(model);
+        else if (r.status === 429) st.quotaUntil.set(model, Date.now() + QUOTA_COOLDOWN_MS);
         continue;
       }
-      const data: any = await res.json();
-      const parts: any[] = data?.candidates?.[0]?.content?.parts ?? [];
-      const text = parts.map((p) => (typeof p?.text === 'string' ? p.text : '')).join('').trim();
-      if (!text) { attempts.push(`${model}: empty answer (${data?.candidates?.[0]?.finishReason ?? 'no candidates'})`); st.lastError = attempts.join(' | '); continue; }
+      let text = r.text;
+      if (text && r.finish === 'MAX_TOKENS') {
+        if (opts.json) { attempts.push(`${model}: answer cut off (token limit)`); st.lastError = attempts.join(' | '); continue; }
+        text = trimToComplete(text); // never show half a sentence
+      }
+      if (!text) { attempts.push(`${model}: empty answer (${r.finish ?? 'no candidates'})`); st.lastError = attempts.join(' | '); continue; }
       st.lastModelUsed = model;
       st.lastError = undefined;
       return { text, model };
@@ -211,6 +213,49 @@ export async function geminiGenerate(prompt: string, opts: GeminiOptions = {}): 
     }
   }
   return null;
+}
+
+const MIN_OUTPUT_TOKENS = 8192;
+const RETRY_OUTPUT_TOKENS = 32768;
+
+interface ModelCall { ok: boolean; status: number; detail: string; text: string; finish?: string }
+
+/** One generateContent call. Visible text only (thought parts are skipped). */
+async function callModel(key: string, model: string, body: Record<string, unknown>, signal: AbortSignal): Promise<ModelCall> {
+  const res: any = await fetch(`${ENDPOINT}/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) return { ok: false, status: res.status, detail: await readDetail(res), text: '' };
+  const data: any = await res.json();
+  const cand = data?.candidates?.[0];
+  const parts: any[] = cand?.content?.parts ?? [];
+  const text = parts.filter((p) => !p?.thought).map((p) => (typeof p?.text === 'string' ? p.text : '')).join('').trim();
+  return { ok: true, status: res.status ?? 200, detail: '', text, finish: cand?.finishReason };
+}
+
+/**
+ * Trim text that was cut off by the token limit back to its last complete sentence, bullet or line,
+ * and close any bold marker left open, so the user never sees half a sentence or stray "**".
+ */
+export function trimToComplete(text: string): string {
+  let t = text.trimEnd();
+  if (!t) return t;
+  const lastBreak = t.lastIndexOf('\n');
+  const lastStop = Math.max(t.lastIndexOf('. '), t.lastIndexOf('.\n'), t.endsWith('.') ? t.length - 1 : -1,
+    t.lastIndexOf('। '), t.endsWith('।') ? t.length - 1 : -1, t.lastIndexOf('! '), t.lastIndexOf('? '));
+  const endsClean = /[.!?।)\]]$/.test(t);
+  if (!endsClean) {
+    const cut = Math.max(lastStop >= 0 ? lastStop + 1 : -1, lastBreak);
+    if (cut > t.length * 0.3) t = t.slice(0, cut).trimEnd();
+  }
+  // drop a dangling list marker / heading / label line ("- **Overall Status**:")
+  t = t.replace(/\n\s*([-*•]|\d+[.)])?\s*(\*\*[^*\n]*\*\*)?\s*:?\s*$/u, '').trimEnd();
+  // balance bold markers line by line
+  t = t.split('\n').map((line) => ((line.match(/\*\*/g) ?? []).length % 2 === 1 ? line.replace(/\*\*(?!.*\*\*)/, '') : line)).join('\n');
+  return t.trim();
 }
 
 /** Strict-ish JSON parse that tolerates ```json fences and leading prose. */

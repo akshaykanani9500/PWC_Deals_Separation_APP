@@ -60,7 +60,9 @@ export default function AiActions({ scope, id }: AiActionsProps) {
   const emailText = email ? `To: ${email.to}\nSubject: ${email.subject}\n\n${email.body}` : '';
   const meetingText = meeting ? `${meeting.title}\nAttendees: ${meeting.attendees.join(', ')}\n\nAgenda:\n${meeting.agenda.map((a) => `- ${a}`).join('\n')}\n\nSlots: ${meeting.suggestedSlots.join(' | ')}` : '';
   const callText = call ? `${call.summary}\n\nAsk about:\n${[...call.risks, ...call.nextSteps].map((a) => `- ${a}`).join('\n')}` : '';
-  const mailto = email ? `mailto:${encodeURIComponent(email.to.match(/<([^>]+)>/)?.[1] ?? '')}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}` : '#';
+  const toAddr = email?.to.match(/<([^>]+)>/)?.[1] ?? '';
+  // masked addresses (shown to some roles) are not real addresses, so leave the To field empty
+  const mailto = email ? `mailto:${toAddr.includes('•') ? '' : encodeURIComponent(toAddr)}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}` : '#';
   const mode = email?.mode ?? meeting?.mode ?? call?.mode;
 
   return (

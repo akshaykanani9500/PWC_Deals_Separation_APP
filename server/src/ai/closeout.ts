@@ -103,11 +103,11 @@ export async function buildCloseoutPreview(db: Db, auth: AuthContext, project: P
   const worst = [...slipByStage.entries()].sort((a, b) => b[1] - a[1])[0];
   if (worst) {
     const s = stages.find((x) => x.stage_id === worst[0]);
-    lessons.push({ stage: s?.name, title: `Start ${s?.name ?? 'critical'} dependencies earlier`, body: `${worst[1]} item(s) in ${s?.name ?? 'one stage'} were late or blocked at close. Raise long-lead items (vendor consents, circuits, licences) in the first two weeks of the stage and track them as Day-1 critical.` });
+    lessons.push({ stage: s?.name, title: `Start ${s?.name ?? 'critical'} dependencies earlier`, body: `${worst[1]} ${worst[1] === 1 ? 'item' : 'items'} in ${s?.name ?? 'one stage'} were late or blocked at close. Raise long-lead items (vendor consents, circuits, licences) in the first two weeks of the stage and track them as Day-1 critical.` });
   }
   const blockedNotes = blocked.map((t) => t.dependency_notes).filter(Boolean) as string[];
   if (blockedNotes.length) lessons.push({ title: 'Recurring blockers to plan for', body: `Typical blockers on this deal: ${blockedNotes.slice(0, 3).join('; ')}. Add owners and escalation dates for these at kick-off.` });
-  if (extended) lessons.push({ stage: 'TSA Exit', title: 'Avoid TSA extensions with an early exit sequence', body: `${extended} TSA service(s) needed an extension. Compare exit sequences at least 90 days before each exit date and notify the seller within the notice period.` });
+  if (extended) lessons.push({ stage: 'TSA Exit', title: 'Avoid TSA extensions with an early exit sequence', body: `${extended} TSA ${extended === 1 ? 'service' : 'services'} needed an extension. Compare exit sequences at least 90 days before each exit date and notify the seller within the notice period.` });
   if (d1.length) lessons.push({ stage: 'Day-1 Readiness', title: 'Keep one Day-1 critical list from the inventory', body: `${d1.length} Day-1 critical items were tracked. Derive the list from the application inventory instead of a separate spreadsheet, and rehearse Day-1 at least once.` });
   if (lessons.length < 2) lessons.push({ title: 'Use the playbook from day one', body: `Starting from the separation playbook kept ${metrics.tasks_done_pct}% of ${tasks.length} tasks on plan. Reuse this deal's stage templates for similar ${project.deal_type ?? 'separation'} work.` });
   for (const l of lessons.slice(0, 4)) items.push({ ...base, item_type: 'Lesson', stage_name: l.stage, title: R('lesson', l.title), body: R('lesson', l.body), payload: null, tags: ['lesson', project.deal_type, project.industry].filter(Boolean).join(',') });

@@ -1,10 +1,11 @@
 /**
  * Right-hand context panel shown on every stage and activity view (collapsible, remembered per browser).
- * The Project snapshot at the top keeps the project summary in view wherever you are in the project.
+ * It leads with what is relevant to the current screen (stage overview or the selected activity);
+ * the Project snapshot sits at the bottom as a compact, collapsible section (collapsed by default, remembered).
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { AlertTriangle, Ban, CalendarClock, ChevronRight, ListChecks, Mail, PanelRightClose, PanelRightOpen, Phone, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, Ban, CalendarClock, ChevronDown, ChevronRight, ListChecks, Mail, PanelRightClose, PanelRightOpen, Phone, ShieldAlert } from 'lucide-react';
 import type { Contact, ProjectDetail, ProjectListItem } from '@shared/types';
 import { get } from '../../lib/api';
 import { Avatar, Pill, ProgressRing, RagDot, TextLink } from '../../components/ui';
@@ -73,8 +74,35 @@ function useProjectCounts(projectId: string, version: number) {
   return row;
 }
 
-/** Project summary kept in view on every stage and activity. */
+const SNAP_KEY = 'dsh.snapshot.open';
+
+/**
+ * Project summary at the bottom of every stage and activity panel. Collapsed by default (the header above already
+ * shows the essentials); the user's choice is remembered.
+ */
 export function ProjectSnapshot({ detail, version = 0 }: { detail: ProjectDetail; version?: number }) {
+  const [open, setOpen] = useState<boolean>(() => { try { return localStorage.getItem(SNAP_KEY) === 'open'; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem(SNAP_KEY, open ? 'open' : 'closed'); } catch { /* ignore */ } }, [open]);
+  const p = detail.project;
+  return (
+    <section className="rounded-lg border border-line bg-surface" data-testid="project-snapshot">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls="project-snapshot-body"
+        className="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-3.5 py-2.5 text-left hover:bg-sunken/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring">
+        <ListChecks size={14} className="shrink-0 text-ink-muted" aria-hidden />
+        <span className="text-[13.5px] font-semibold">Project snapshot</span>
+        {!open && (
+          <span className="ml-1 flex min-w-0 flex-1 items-center gap-1.5 truncate text-[12px] text-ink-muted">
+            <RagDot rag={p.rag} /><span className="num">{Math.round(p.percent_complete ?? 0)}%</span><span aria-hidden>·</span><span className="truncate">{p.status}</span>
+          </span>
+        )}
+        <ChevronDown size={16} className={clsx('ml-auto shrink-0 text-ink-muted transition-transform', open && 'rotate-180')} aria-hidden />
+      </button>
+      {open && <div id="project-snapshot-body" className="border-t border-line px-3.5 pb-3.5 pt-3"><SnapshotBody detail={detail} version={version} /></div>}
+    </section>
+  );
+}
+
+function SnapshotBody({ detail, version }: { detail: ProjectDetail; version: number }) {
   const p = detail.project;
   const counts = useProjectCounts(p.project_id, version);
   const stages = [...detail.stages].sort((a, b) => a.sort_order - b.sort_order);
@@ -88,7 +116,7 @@ export function ProjectSnapshot({ detail, version = 0 }: { detail: ProjectDetail
   if (p.clean_team_required === 'Y') risks.push({ icon: <ShieldAlert size={13} />, text: 'Clean-team rules apply to sensitive data' });
 
   return (
-    <PanelSection title="Project snapshot" icon={<ListChecks size={14} />}>
+    <>
       <div className="flex items-center gap-3">
         <ProgressRing value={p.percent_complete} size={52} label={`Project ${Math.round(p.percent_complete ?? 0)}% complete`} />
         <div className="min-w-0 flex-1 space-y-1">
@@ -148,7 +176,7 @@ export function ProjectSnapshot({ detail, version = 0 }: { detail: ProjectDetail
           </ul>
         </div>
       )}
-    </PanelSection>
+    </>
   );
 }
 

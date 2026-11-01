@@ -9,6 +9,7 @@ import type {
 } from '../../../shared/types';
 import { visibleProjectIds, sanitizeProject, sanitizeContact, filterCommunications } from '../services/access';
 import { todayIso } from './lang';
+import { maskContact } from '../../../shared/permissions';
 
 export interface Scope {
   type: 'global' | 'project' | 'stage' | 'activity' | 'task';
@@ -86,15 +87,25 @@ export async function resolveScope(db: Db, auth: AuthContext, ctx: ContextInput,
     if (task && task.project_id !== project.project_id) task = undefined;
   }
 
-  if (!project && message) {
-    // "status of Phoenix" from the global bubble -> scope to that project (only if visible)
+  if (message) {
+    // "status of Phoenix" -> scope to that project (only if visible). From inside another project this
+    // switches to the named project, so "Tell me about Project Phoenix" on a Rioja screen answers about Phoenix.
     const all = await db.find<Project>('projects', (p) => visible.has(p.project_id));
     const lower = message.toLowerCase();
     const hit = all.find((p) => {
       const name = (p.code_name || '').toLowerCase().replace(/^project\s+/, '');
-      return name.length >= 3 && lower.includes(name);
+      return name.length >= 3 && new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(lower);
     });
-    if (hit) project = hit;
+    if (hit && (!project || hit.project_id !== project.project_id)) {
+      project = hit; stage = undefined; activity = undefined; task = undefined;
+    }
+  }
+
+  // Someone who can see exactly one project (e.g. the client viewer): dashboard questions are about that project.
+  const askedForSomething = !!(ctx.projectId || ctx.stageId || ctx.activityId || ctx.taskId);
+  if (!askedForSomething && !project && visible.size === 1) {
+    const only = await db.get<Project>('projects', [...visible][0]);
+    if (only && only.is_deleted !== 'Y') project = only;
   }
 
   if (task) return { scope: { type: 'task', projectIds: [task.project_id], project, stage, activity, task }, visible };
@@ -148,7 +159,16 @@ export async function loadComms(db: Db, auth: AuthContext, scope: Scope): Promis
   else if (scope.type === 'activity' && scope.activity) rows = rows.filter((c) => c.activity_id === scope.activity!.activity_id);
   else if (scope.type === 'stage' && scope.stage) rows = rows.filter((c) => c.stage_id === scope.stage!.stage_id);
   rows = filterCommunications(rows, auth);
+  if (!can(auth, 'contacts.view.full')) rows = rows.map((c) => ({ ...c, subject: maskPii(c.subject), body: maskPii(c.body), ai_summary: maskPii(c.ai_summary), from_name: maskPii(c.from_name), to_name: maskPii(c.to_name) }));
   return rows.sort((a, b) => (b.occurred_at || '').localeCompare(a.occurred_at || ''));
+}
+
+const PHONE = /\+?\d[\d ()-]{7,}\d/g;
+const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+/** Mask phone numbers and email addresses inside free text (for roles whose contacts are masked). */
+export function maskPii<T extends string | undefined | null>(text: T): T {
+  if (!text) return text;
+  return text.replace(EMAIL, (e) => maskContact(e)).replace(PHONE, (p) => maskContact(p)) as T;
 }
 
 export async function loadNotes(db: Db, scope: Scope): Promise<QuickNote[]> {

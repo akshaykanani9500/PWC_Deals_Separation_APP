@@ -1,6 +1,6 @@
 import type { Db } from '../../db/Db';
 import type { AuthContext } from '../../auth-types';
-import type { Lang } from '../../../../shared/types';
+import type { Lang, Task } from '../../../../shared/types';
 import type { ScopedData } from '../data';
 import type { Intent, Domain } from '../router';
 
@@ -21,6 +21,8 @@ export interface AgentInput {
   intents: Intent[];
   lang: Lang;
   message: string;
+  /** A task the question is about (named in it, or 'it/that' from the previous answer). */
+  focusTask?: Task;
 }
 
 export function emptyOutput(agent: Domain): AgentOutput {

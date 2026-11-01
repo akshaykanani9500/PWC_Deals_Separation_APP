@@ -24,7 +24,7 @@ export async function financeAgent(input: AgentInput): Promise<AgentOutput> {
       const cur = projects[0]?.currency || 'USD';
       if (data.scope.type === 'global') {
         out.lines.push(t(lang,
-          `Across ${projects.length} project(s): fee budget ${fmtMoney(sum('fee_budget'), cur)}, billed ${fmtMoney(sum('fee_billed'), cur)}; client TSA run-rate ${fmtMoney(sum('tsa_monthly_cost'), cur)}/month; open funding gaps ${fmtMoney(sum('funding_gap'), cur)}.`,
+          `Across ${projects.length === 1 ? '1 project' : `${projects.length} projects`}: fee budget ${fmtMoney(sum('fee_budget'), cur)}, billed ${fmtMoney(sum('fee_billed'), cur)}; client TSA run-rate ${fmtMoney(sum('tsa_monthly_cost'), cur)}/month; open funding gaps ${fmtMoney(sum('funding_gap'), cur)}.`,
           `${projects.length} प्रोजेक्ट में कुल: फीस बजट ${fmtMoney(sum('fee_budget'), cur)}, बिल किया ${fmtMoney(sum('fee_billed'), cur)}; क्लाइंट TSA खर्च ${fmtMoney(sum('tsa_monthly_cost'), cur)}/माह; फंडिंग गैप ${fmtMoney(sum('funding_gap'), cur)}।`));
         out.facts.push(`Portfolio finance: fee budget ${sum('fee_budget')}, billed ${sum('fee_billed')}, TSA monthly ${sum('tsa_monthly_cost')}, funding gap ${sum('funding_gap')} (${cur}).`);
         const top = [...projects].sort((a, b) => Number(b.funding_gap ?? 0) - Number(a.funding_gap ?? 0)).filter((p) => Number(p.funding_gap ?? 0) > 0).slice(0, 4);

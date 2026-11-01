@@ -18,6 +18,7 @@ import { geminiConfigured, geminiJson } from './gemini';
 import { auditAi } from './audit';
 import { todayIso } from './lang';
 import { AiHttpError } from './summary';
+import { canAddActivityToStage, canAddTaskToActivity, canEditActivity, canEditTask } from '../services/access';
 
 type DraftTask = { title: string; description?: string; priority: Priority; day1_critical: YN; effort_hours?: number };
 type DraftActivity = { name: string; description: string; priority: Priority; tasks: DraftTask[] };
@@ -267,12 +268,46 @@ function cleanDraft(d: any): any {
   return d;
 }
 
+/**
+ * Suggestions follow the same row rules as the edit they prepare: e.g. a Workstream Lead gets activity/task
+ * suggestions only for stages they lead; stage suggestions need stage.edit; editing a project needs project.edit.
+ */
+async function assertSuggestAllowed(db: Db, auth: AuthContext, kind: SuggestRequest['kind'], scope: Awaited<ReturnType<typeof resolveScope>>['scope']): Promise<void> {
+  const acts = auth.actions as string[];
+  const deny = (msg: string) => { throw new AiHttpError(403, msg); };
+  if (scope.project?.status === 'Closed' && kind !== 'project') deny('This project is closed, so there is nothing to change.');
+  switch (kind) {
+    case 'project':
+      if (scope.project && !acts.includes('project.edit')) deny('Your role cannot edit this project, so AI suggestions for it are not available.');
+      if (!scope.project && !acts.includes('project.create')) deny('Your role cannot create projects.');
+      return;
+    case 'stages': case 'stage':
+      if (!acts.includes('stage.edit')) deny('Only the Engagement Partner or Manager can change stages, so stage suggestions are not available for your role.');
+      return;
+    case 'activities':
+      if (scope.stage && !(await canAddActivityToStage(db, auth, scope.stage))) deny(auth.code === 'LEAD' ? 'You can only get activity suggestions for the stages you lead.' : 'Your role cannot add activities here.');
+      return;
+    case 'activity':
+      if (scope.activity ? !(await canEditActivity(db, auth, scope.activity)) : scope.stage ? !(await canAddActivityToStage(db, auth, scope.stage)) : false) {
+        deny(auth.code === 'LEAD' ? 'You can only get activity suggestions for the stages you lead.' : 'Your role cannot edit this activity.');
+      }
+      return;
+    case 'tasks':
+      if (scope.activity && !(await canAddTaskToActivity(db, auth, scope.activity))) deny(auth.code === 'LEAD' ? 'You can only get task suggestions in the stages you lead.' : 'Your role cannot add tasks here.');
+      return;
+    case 'task':
+      if (scope.task && !(await canEditTask(db, auth, scope.task)).canEdit) deny('You cannot edit this task, so there is no update to suggest.');
+      return;
+  }
+}
+
 export async function suggest(db: Db, auth: AuthContext, req: SuggestRequest): Promise<SuggestResponse> {
   const { scope } = await resolveScope(db, auth, { projectId: req.projectId, stageId: req.stageId, activityId: req.activityId, taskId: req.taskId });
   // ids the user cannot see are dropped by resolveScope; refuse instead of silently ignoring them
   if ((req.taskId && !scope.task) || (req.activityId && !scope.activity) || (req.stageId && !scope.stage) || (req.projectId && !scope.project)) {
     throw new AiHttpError(404, 'Not found');
   }
+  await assertSuggestAllowed(db, auth, req.kind, scope);
   const ctx: Ctx = {
     db, auth, req, knowledge: await loadApprovedKnowledge(db),
     project: scope.project, stage: scope.stage, activity: scope.activity, task: scope.task, usedKnowledge: new Map(),

@@ -8,6 +8,9 @@ import { suggest } from '../ai/suggest';
 import { summarize, draftEmail, suggestMeeting, type ScopeKind } from '../ai/summary';
 import { geminiStatus, testGeminiKey, listGeminiModels, geminiKey } from '../ai/gemini';
 import { validKey, validModel, currentRequestAi } from '../ai/requestAi';
+import { loadScoped, resolveScope } from '../ai/data';
+import { capabilities } from '../ai/guardrails';
+import { screenPrompts } from '../ai/prompts';
 
 const SCOPES: ScopeKind[] = ['project', 'stage', 'activity', 'task'];
 const KINDS = ['project', 'stages', 'stage', 'activities', 'activity', 'tasks', 'task'];
@@ -70,6 +73,17 @@ export function createAiRouter(db: Db): Router {
       language: body.language === 'hi' || body.language === 'en' ? body.language : 'auto',
       context: body.context ?? { type: 'global' },
     });
+  }));
+
+  /** Starter prompts for the screen the user is on (names the record and respects the persona). */
+  r.get('/piku/starters', route(['piku.use'], async (req) => {
+    const q = req.query as Record<string, string | undefined>;
+    const clean = (v?: string) => (v && /^[A-Za-z0-9-]{1,40}$/.test(v) ? v : undefined);
+    const { scope } = await resolveScope(db, req.auth, { projectId: clean(q.projectId), stageId: clean(q.stageId), activityId: clean(q.activityId), taskId: clean(q.taskId) });
+    const data = await loadScoped(db, req.auth, scope);
+    const cap = await capabilities(db, req.auth, scope);
+    const label = scope.task?.title ?? scope.activity?.name ?? scope.stage?.name ?? scope.project?.code_name ?? '';
+    return { contextType: scope.type, label, prompts: screenPrompts(req.auth, data, cap, lang(q.language)) };
   }));
 
   r.get('/piku/history', route(['piku.use'], async (req) => {

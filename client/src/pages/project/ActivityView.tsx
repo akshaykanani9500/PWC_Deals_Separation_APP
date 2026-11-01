@@ -1,13 +1,14 @@
 /**
  * Activity: tasks as Table | Board | Timeline, with filters, bulk status change, quick add, and the right-hand
- * context panel (project snapshot, AI summary, at a glance, notes, contacts, communications).
+ * context panel (this activity's context and AI summary first, then notes, contacts, communications, and the
+ * collapsible project snapshot at the bottom).
  */
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import clsx from 'clsx';
 import {
   Search, Plus, Flag, ClipboardList, Phone, Mail, Video, MessageSquare, StickyNote, Trash2, Table2, Columns3, GanttChart,
-  ChevronRight, CalendarDays, PieChart as PieIcon, MessagesSquare, Users, CornerDownLeft,
+  ChevronRight, CalendarDays, PieChart as PieIcon, MessagesSquare, Users, CornerDownLeft, Ban, CalendarClock, Target,
 } from 'lucide-react';
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
 import type { ActivityDetail, ProjectDetail, Task, WorkStatus, Communication } from '@shared/types';
@@ -399,8 +400,9 @@ function ActivitySidebar({ data, detail, version, projectId, onChanged }: { data
 
   return (
     <>
-      <ProjectSnapshot detail={detail} version={version} />
+      <ActivityContextCard data={data} />
       <AiSummaryCard scope="activity" id={a.activity_id} />
+      <AiActions scope="activity" id={a.activity_id} />
 
       <PanelSection title="At a glance" icon={<PieIcon size={14} />}>
         <div className="flex items-center gap-3">
@@ -419,8 +421,6 @@ function ActivitySidebar({ data, detail, version, projectId, onChanged }: { data
           </dl>
         </div>
       </PanelSection>
-
-      <AiActions scope="activity" id={a.activity_id} />
 
       <PanelSection title="Quick notes" icon={<StickyNote size={14} />}>
         {data.perms.canAddNote ? (
@@ -456,7 +456,67 @@ function ActivitySidebar({ data, detail, version, projectId, onChanged }: { data
       <PanelSection title="Recent communications" icon={<MessagesSquare size={14} />}>
         <CommList comms={data.communications.slice(0, 6)} />
       </PanelSection>
+
+      <ProjectSnapshot detail={detail} version={version} />
     </>
+  );
+}
+
+/** First card of the activity panel: where this activity stands and what needs attention now. */
+function ActivityContextCard({ data }: { data: ActivityDetail }) {
+  const a = data.activity;
+  const s = data.stats;
+  const open = data.tasks.filter((t) => t.status !== 'Done');
+  const blocked = open.filter((t) => t.status === 'Blocked');
+  const overdue = open.filter((t) => t.status !== 'Blocked' && isOverdue(t.due_date, t.status));
+  const nextDue = open.filter((t) => t.status !== 'Blocked' && !isOverdue(t.due_date, t.status) && t.due_date)
+    .sort((x, y) => String(x.due_date).localeCompare(String(y.due_date))).slice(0, 3);
+  const late = isOverdue(a.due_date, a.status);
+  const pct = Math.round(a.percent_complete ?? 0);
+  const groups: { title: string; icon: JSX.Element; tone: string; rows: TaskRow[]; note: (t: TaskRow) => string }[] = [
+    { title: 'Blocked', icon: <Ban size={13} aria-hidden />, tone: 'text-rose', rows: blocked.slice(0, 3), note: (t) => `${isOverdue(t.due_date, t.status) ? `Overdue (due ${date(t.due_date)}) · ` : ''}${t.dependency_notes ? `Waiting on: ${t.dependency_notes}` : (t.assignee_name ?? 'Unassigned')}` },
+    { title: 'Overdue', icon: <CalendarClock size={13} aria-hidden />, tone: 'text-rose', rows: overdue.slice(0, 3), note: (t) => `${t.assignee_name ?? 'Unassigned'} · due ${date(t.due_date)}` },
+    { title: 'Due next', icon: <CalendarDays size={13} aria-hidden />, tone: 'text-ink-soft', rows: nextDue, note: (t) => `${t.assignee_name ?? 'Unassigned'} · due ${date(t.due_date)}` },
+  ];
+  return (
+    <section className="rounded-lg border border-brand/40 bg-surface p-3.5 shadow-card" data-testid="activity-context-card" aria-label={`Context for activity ${a.name}`}>
+      <div className="mb-1 flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-brand-dark"><Target size={13} aria-hidden /> This activity</div>
+      <h4 className="text-[14px] font-semibold leading-snug">{a.name}</h4>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <Pill>{a.status ?? 'Not Started'}</Pill>
+        {a.priority && <Pill>{a.priority}</Pill>}
+      </div>
+      <div className="mt-2.5"><Progress value={pct} /></div>
+      <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12.5px]">
+        <div className="min-w-0"><dt className="text-ink-muted">Owner</dt><dd className="flex items-center gap-1.5 truncate">{a.owner_name ? <><Avatar name={a.owner_name} size={18} /><span className="truncate">{a.owner_name}</span></> : '–'}</dd></div>
+        <div><dt className="text-ink-muted">Due</dt><dd className={clsx('num', late && 'font-medium text-rose')}>{date(a.due_date)}{late && ' (late)'}</dd></div>
+      </dl>
+      <dl className="mt-3 grid grid-cols-4 gap-1.5 text-center">
+        {([['Open', s.total - s.done, ''], ['Blocked', s.blocked, 'text-rose'], ['Overdue', s.overdue, 'text-rose'], ['Day-1', s.day1Critical, '']] as const).map(([k, v, tone]) => (
+          <div key={k} className="rounded-md bg-sunken px-1 py-1.5">
+            <dt className="text-[11px] text-ink-muted">{k}</dt>
+            <dd className={clsx('num text-[15px] font-semibold', v ? tone : '')}>{v}</dd>
+          </div>
+        ))}
+      </dl>
+      {groups.some((g) => g.rows.length) ? groups.filter((g) => g.rows.length).map((g) => (
+        <div key={g.title} className="mt-3">
+          <div className={clsx('mb-1 flex items-center gap-1.5 text-[12px] font-semibold', g.tone)}>{g.icon}{g.title}</div>
+          <ul className="space-y-1">
+            {g.rows.map((t) => (
+              <li key={t.task_id}>
+                <Link to={`?task=${t.task_id}`} className="group block rounded-md px-2 py-1.5 hover:bg-sunken focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring">
+                  <span className="flex items-center justify-between gap-2 text-[12.5px] font-medium text-link group-hover:underline">
+                    <span className="truncate">{t.title}</span><ChevronRight size={13} className="shrink-0 text-ink-muted" aria-hidden />
+                  </span>
+                  <span className="block truncate text-[11.5px] text-ink-muted">{g.note(t)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )) : <p className="mt-3 text-[12.5px] text-ink-muted">{s.total && s.done === s.total ? 'All tasks in this activity are done.' : 'Nothing blocked, overdue or due soon.'}</p>}
+    </section>
   );
 }
 
