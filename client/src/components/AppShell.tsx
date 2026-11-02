@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import { Accessibility, ChevronDown, LayoutDashboard, LogOut, MoreHorizontal, Repeat2, X } from 'lucide-react';
+import { useAccessSummary } from '../features/access/useAccessSummary';
 import { useSession } from '../lib/session';
 import { usePrefs, type TextSize } from '../lib/prefs';
 import { useOpenTabs, MAX_VISIBLE_TABS, type OpenTab } from '../lib/openTabs';
@@ -45,11 +46,14 @@ export default function AppShell() {
   const nav = useNavigate();
   const [menu, setMenu] = useState(false);
   const menuRef = useClickOutside(() => setMenu(false));
+  const accessNav = can('access.request') || can('access.approve') || can('access.review');
+  const access = useAccessSummary(!!session && accessNav);
 
   if (!session) return null;
-  const links = [
+  const links: { to: string; label: string; show: boolean; end?: boolean; badge?: number }[] = [
     { to: '/', label: 'Dashboard', show: true, end: true },
     { to: '/knowledge', label: 'Knowledge hub', show: can('knowledge.view') },
+    { to: '/access', label: 'Access', show: accessNav, badge: access?.inbox || 0 },
     { to: '/audit', label: 'Audit log', show: can('audit.view') },
     { to: '/admin/data', label: 'Data admin', show: can('admin.data') },
   ].filter((l) => l.show);
@@ -66,6 +70,7 @@ export default function AppShell() {
                 className={({ isActive }) => clsx('rounded-md px-3 py-1.5 text-[13.5px] font-medium transition-colors',
                   isActive ? 'bg-chrome-soft text-chrome-text' : 'text-chrome-muted hover:bg-chrome-soft/70 hover:text-chrome-text')}>
                 {l.label}
+                {!!l.badge && <span className="num ml-1.5 rounded-full bg-amber px-1.5 py-[1px] text-[11px] font-semibold text-white" aria-label={`${l.badge} waiting for your approval`}>{l.badge}</span>}
               </NavLink>
             ))}
           </nav>

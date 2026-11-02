@@ -1,9 +1,7 @@
-/** Project-level side panels: edit project, team, finance. */
-import { legendText } from '../dashboard/widgets';
+/** Project-level side panels: edit project, team. (Finance has its own full-screen workspace: pages/finance.) */
 import { useEffect, useMemo, useState } from 'react';
 import { Trash2, UserPlus, Sparkles } from 'lucide-react';
-import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import type { FinanceEntry, ProjectDetail, SuggestResponse, TsaService } from '@shared/types';
+import type { ProjectDetail, SuggestResponse } from '@shared/types';
 import { DEAL_TYPES, INDUSTRIES, PROJECT_STATUS, SENSITIVITY, MEMBER_ROLES, RAG } from '@shared/schema';
 import { patch, post, del } from '../../lib/api';
 import { useApi } from '../../hooks/useApi';
@@ -14,7 +12,6 @@ import { AiLabel, AiStrip, Avatar, Button, Checkbox, Field, Input, Pill, Select,
 import { useToast } from '../../components/toast';
 import { date, money } from '../../lib/format';
 import AiSuggestButton from '../../features/ai/AiSuggestButton';
-import { CHART } from '../dashboard/widgets';
 
 const TEXT_FIELDS = ['code_name', 'client_alias', 'deal_type', 'industry', 'description', 'status', 'rag', 'start_date', 'target_close_date',
   'partner_user_id', 'manager_user_id', 'sensitivity', 'data_residency', 'clean_team_required', 'currency', 'tags'] as const;
@@ -27,7 +24,7 @@ export function EditProjectPanel({ open, detail, onClose, onSaved }: { open: boo
   const { can } = useSession();
   const users = useUsers();
   const p = detail.project as unknown as Record<string, unknown>;
-  const finEditable = can('finance.edit') && detail.perms.canViewFinance;
+  const finEditable = (detail.perms.canEditFinance ?? can('finance.edit')) && detail.perms.canViewFinance;
   const base = useMemo(() => {
     const f: Record<string, string> = {};
     [...TEXT_FIELDS, ...NUM_FIELDS, ...FIN_FIELDS].forEach((k) => { f[k] = p[k] == null ? '' : String(p[k]); });
@@ -161,78 +158,4 @@ export function TeamPanel({ open, detail, onClose, onSaved }: { open: boolean; d
       <ConfirmDialog open={!!confirm} title="Remove from the team?" confirmLabel="Remove" body="They lose access to this project straight away." onCancel={() => setConfirm(null)} onConfirm={() => confirm && remove(confirm)} />
     </SidePanel>
   );
-}
-
-interface FinanceResponse { entries: FinanceEntry[]; tsaServices: TsaService[]; totals: Record<string, number> }
-
-export function FinancePanel({ open, detail, onClose }: { open: boolean; detail: ProjectDetail; onClose: () => void }) {
-  const { data, error, loading } = useApi<FinanceResponse>(open ? `/projects/${detail.project.project_id}/finance` : null, [open]);
-  const cur = detail.project.currency || 'USD';
-  const entries = [...(data?.entries ?? [])].sort((a, b) => a.period_month.localeCompare(b.period_month));
-  return (
-    <SidePanel open={open} onClose={onClose} width="xl" title="Finance" subtitle={`${detail.project.code_name}, figures in ${cur}`} footer={<Button onClick={onClose}>Close</Button>}>
-      {error && <p className="text-rose">{error.status === 403 ? 'Your role cannot see finance for this project.' : error.message}</p>}
-      {loading && !data && <Skeleton className="h-64" />}
-      {data && (
-        <div className="space-y-5">
-          {data.totals && Object.keys(data.totals).length > 0 && (
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-              {Object.entries(data.totals).map(([k, v]) => (
-                <div key={k} className="rounded-lg bg-sunken px-3 py-2">
-                  <div className="text-[11.5px] text-ink-muted">{financeLabel(k)}</div>
-                  <div className="num text-[16px] font-medium">{typeof v === 'number' && /hour|count|services/i.test(k) ? v.toLocaleString() : money(v, cur)}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          <section>
-            <h4 className="mb-2 text-[13px] font-semibold">Monthly fees and client TSA cost</h4>
-            {entries.length ? (
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={entries} margin={{ top: 8, right: 12, left: 8, bottom: 0 }}>
-                    <CartesianGrid vertical={false} stroke={CHART.line} />
-                    <XAxis dataKey="period_month" tick={{ fontSize: 11, fill: CHART.muted }} axisLine={false} tickLine={false} />
-                    <YAxis tickFormatter={(v) => money(v, cur)} width={64} tick={{ fontSize: 11, fill: CHART.muted }} axisLine={false} tickLine={false} />
-                    <Tooltip formatter={(v: number) => money(v, cur, false)} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} formatter={legendText} />
-                    <Bar dataKey="fee_planned" name="Fees planned" fill="#C9CED6" radius={[3, 3, 0, 0]} maxBarSize={18} />
-                    <Bar dataKey="fee_actual" name="Fees actual" fill={CHART.brand} radius={[3, 3, 0, 0]} maxBarSize={18} />
-                    <Line dataKey="tsa_cost" name="Client TSA cost" stroke={CHART.blue} strokeWidth={2} dot={false} />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            ) : <p className="text-[12.5px] text-ink-muted">No monthly entries recorded.</p>}
-          </section>
-          <section>
-            <h4 className="mb-2 text-[13px] font-semibold">TSA services ({data.tsaServices.length})</h4>
-            <div className="overflow-x-auto rounded-lg border border-line">
-              <table className="w-full text-[12.5px]">
-                <thead><tr><th className="th">Service</th><th className="th">Provider</th><th className="th text-right">Per month</th><th className="th">Planned exit</th><th className="th text-right">Extension uplift</th><th className="th">Status</th></tr></thead>
-                <tbody>
-                  {data.tsaServices.map((s) => (
-                    <tr key={s.service_id}>
-                      <td className="td"><div className="font-medium">{s.name}</div>{s.linked_apps && <div className="text-[11px] text-ink-muted">{s.linked_apps}</div>}</td>
-                      <td className="td">{s.provider || '–'}</td>
-                      <td className="td num text-right">{money(s.monthly_fee, cur)}</td>
-                      <td className="td num">{date(s.planned_exit_date)}</td>
-                      <td className="td num text-right">{s.extension_uplift_pct != null ? `${s.extension_uplift_pct}%` : '–'}</td>
-                      <td className="td">{s.status ? <Pill>{s.status}</Pill> : '–'}</td>
-                    </tr>
-                  ))}
-                  {!data.tsaServices.length && <tr><td colSpan={6} className="td text-ink-muted">No TSA services recorded for this project.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </div>
-      )}
-    </SidePanel>
-  );
-}
-
-/** "tsaCostToDate" / "tsa_cost_to_date" -> "TSA cost to date" */
-function financeLabel(k: string) {
-  const t = k.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().replace(/\btsa\b/g, 'TSA');
-  return t.charAt(0).toUpperCase() + t.slice(1);
 }

@@ -168,6 +168,7 @@ export function generateSeed(now: Date = new Date()): SeedData {
   const out: SeedData = {
     personas, users, projects: [], project_members: [], stages: [], activities: [], tasks: [], contacts: [], communications: [],
     quick_notes: [], finance_entries: [], tsa_services: [], knowledge_items: [], chat_messages: [], audit_log: [],
+    funding_sources: [], cost_items: [], invoices: [], access_grants: [],
   };
 
   const contactFirst = ['Michael', 'Jennifer', 'Thomas', 'Akira', 'Elena', 'Robert', 'Divya', 'Samuel', 'Grace', 'Hiro', 'Marta', 'Oliver', 'Shalini', 'Peter', 'Yuki'];

@@ -33,7 +33,10 @@ Owner of each block in brackets: **[A1]** = Agent 1 (data/API), **[A3]** = Agent
 | GET | `/projects/:id` | – | `ProjectDetail` |
 | PATCH | `/projects/:id` | `Partial<Project>` | `ProjectDetail` (`project.edit`) |
 | DELETE | `/projects/:id` | – | `{ ok }` soft delete (`project.edit`, PARTNER/MANAGER only) |
-| GET | `/projects/:id/finance` | – | `{ entries: FinanceEntry[], tsaServices: TsaService[], totals: {...} }` (`finance.view`) |
+| GET | `/projects/:id/finance` | – | `FinanceWorkspace` (`finance.view`, from the role or an active access grant on this project): `entries`, `tsaServices`, `totals` (v1.2 keys kept), `rateCard`, `effort.{byStage,byActivity,byPerson}`, `invoices`, `costItems`, `fundingSources`, `sourcesUses`, `billing`, `perms.{canEdit,viaGrant}` |
+| POST | `/projects/:id/finance/{funding\|costs\|invoices}` | row fields | created row (`finance.edit`, project open; stage/activity must belong to the project) |
+| PATCH | `/projects/:id/finance/{funding\|costs\|invoices}/:rowId` | partial row | updated row (`finance.edit`) |
+| DELETE | `/projects/:id/finance/{funding\|costs\|invoices}/:rowId` | – | `{ ok }` soft delete (`finance.edit`) |
 | GET | `/projects/:id/members` | – | members with names |
 | POST | `/projects/:id/members` | `{ user_id, member_role, workstream? }` | member (`project.edit`) |
 | DELETE | `/projects/:id/members/:memberId` | – | `{ ok }` |
@@ -83,6 +86,21 @@ Owner of each block in brackets: **[A1]** = Agent 1 (data/API), **[A3]** = Agent
 | POST | `/admin/sheets/init` | `{ seed: boolean, source?: 'demo' \| 'current' }` | `{ ok, seeded, source, counts, message, restartNeeded }` - creates tabs (+ header rows, `_meta`) and optionally loads demo data or copies the current database |
 | GET | `/admin/export/oracle` | – | `text/plain` SQL: DDL + INSERTs |
 | GET | `/admin/export/xlsx` | – | xlsx workbook, one sheet per table (same layout as the Google Sheet) |
+
+## Access governance (v1.3) - `server/src/routes/access.ts`, rules in `shared/access.ts`
+| Method | Path | Body / query | Returns |
+|---|---|---|---|
+| GET | `/access/catalog` | – | `{ grantable, durations: [7,30,90], rules: string[] }` |
+| GET | `/access/summary` | – | `{ inbox, mine, activeForMe }` (top-bar badge) |
+| GET | `/access/requests` | `?view=mine\|inbox\|all&projectId=` | `AccessRequestRow[]`: own requests; for L1 approvers their projects; Risk & Quality and the Deals Leader see all. Each row carries `state` (adds `Expired`) and `can.{approveL1,approveL2,reject,cancel,revoke}` |
+| POST | `/access/requests` | `{ project_id, permission_code, justification (>=15 chars), duration_days, grantee_user_id? }` | row. Self-request needs `access.request` -> `Pending L1`. Sponsoring someone needs `access.approve` + level-1 rule -> `Pending L2` with L1 filled. 400 for non-grantable / ineligible / not staffed, 409 for duplicates |
+| POST | `/access/requests/:id/decision` | `{ decision: 'approve'\|'reject', note }` | row. L1: Partner/Manager on the project (or EXEC) holding the permission, senior to the grantee, not the requester. L2: `access.review` (Risk), not requester / grantee / L1. Approve at L2 -> `Active` with `expires_at`. Reject needs a note |
+| POST | `/access/requests/:id/revoke` | `{ reason }` | row (`Revoked`): grantee, L1-eligible approver or Risk |
+| POST | `/access/requests/:id/cancel` | – | row (`Cancelled`): requester, while pending |
+
+**How grants apply:** `assertProjectAccess` (and the AI scope resolver) merge the user's active, unexpired grants for that ONE project into
+`auth.actions` for the request (`services/grants.ts`). Portfolio screens (dashboard, project list) never use grants, and the activity feed
+never shows finance or access events. `GET /projects/:id` returns `grants[]` and `perms.{canEditFinance,canRequestAccess,canSponsorAccess}`.
 
 ## AI [A3] (mounted at `/api/ai` by `server/src/routes/ai.ts`, export `createAiRouter(db: Db): Router`)
 | Method | Path | Body | Returns |

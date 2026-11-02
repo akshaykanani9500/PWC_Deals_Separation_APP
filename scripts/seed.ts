@@ -11,6 +11,7 @@ import { generateSeed } from './seed-data';
 import { LocalJsonAdapter } from '../server/src/db/adapters/LocalJsonAdapter';
 import { rollupProject } from '../server/src/services/rollup';
 import { createDb } from '../server/src/db/index';
+import { generateFinanceDemo } from '../server/src/services/finance';
 
 export async function buildSeed() {
   const data = generateSeed(new Date());
@@ -19,6 +20,13 @@ export async function buildSeed() {
   await mem.init();
   for (const t of TABLES) await mem.replaceTable(t.name as TableName, data[t.name as TableName]);
   for (const p of data.projects) await rollupProject(mem, p.project_id);
+  // v1.3: finance workspace (costs, funding, invoices) and access-governance examples, built from the rolled-up plan.
+  const all = async (t: TableName) => mem.all(t, { includeDeleted: true });
+  const demo = generateFinanceDemo({
+    projects: await all('projects'), stages: await all('stages'), tasks: await all('tasks'), finance_entries: await all('finance_entries'),
+    project_members: await all('project_members'), users: await all('users'), personas: await all('personas'),
+  }, new Date());
+  for (const [t, rows] of Object.entries(demo)) await mem.replaceTable(t as TableName, rows);
   const out: Record<string, any[]> = {};
   for (const t of TABLES) out[t.name] = await mem.all(t.name as TableName, { includeDeleted: true });
   return out;

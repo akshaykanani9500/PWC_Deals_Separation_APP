@@ -8,6 +8,7 @@ import type { Project, Contact, Communication, Task, Activity, Stage, ProjectMem
 import { CLIENT_HIDDEN_PROJECT_FIELDS, FINANCE_FIELDS, maskContact } from '../../../shared/permissions';
 import { HttpError } from '../errors';
 import { audit } from './audit';
+import { applyProjectGrants } from './grants';
 
 const has = (auth: AuthContext, a: string) => (auth.actions as string[]).includes(a);
 
@@ -40,6 +41,8 @@ export async function assertProjectAccess(db: Db, auth: AuthContext, projectId: 
     await audit(db, auth, 'access.denied', { type: 'project', id: projectId, projectId, details: { reason: 'not staffed on project' } });
     throw new HttpError(403, 'You are not staffed on this project.', 'FORBIDDEN');
   }
+  // Approved, unexpired access grants for this project (two-level governance) switch on extra actions for this request.
+  await applyProjectGrants(db, auth, projectId);
   return project;
 }
 

@@ -211,6 +211,11 @@ export function humanAction(action: string): string {
     'project.closeout': 'closed', 'closeout.submit': 'closed out and sent learnings for review from', 'closeout.archive_only': 'closed and archived (no reuse consent)',
     'closeout.approve': 'approved learnings from', 'knowledge.update': 'reviewed a knowledge item from', 'member.add': 'added a team member to',
     'member.remove': 'removed a team member from', 'note.create': 'added a note on', 'note.delete': 'removed a note on', 'communication.create': 'logged a communication on', 'stage.bulk_create': 'added stages to', 'activity.bulk_create': 'added activities to', 'task.bulk_create': 'added tasks to',
+    'access.request': 'requested extra access on', 'access.approve.l1': 'gave level-1 approval for access on', 'access.approve.l2': 'gave level-2 (Risk) approval for access on',
+    'access.reject': 'rejected an access request on', 'access.revoke': 'revoked access on', 'access.cancel': 'cancelled an access request on',
+    'finance.funding.create': 'added a funding source to', 'finance.funding.update': 'updated a funding source on', 'finance.funding.delete': 'removed a funding source from',
+    'finance.costs.create': 'added a cost line to', 'finance.costs.update': 'updated a cost line on', 'finance.costs.delete': 'removed a cost line from',
+    'finance.invoices.create': 'added an invoice to', 'finance.invoices.update': 'updated an invoice on', 'finance.invoices.delete': 'removed an invoice from',
   };
   if (map[action]) return map[action];
   const gate: Record<string, string> = { 'stage.gate.request': 'requested gate approval for stage', 'stage.gate.approve': 'approved the gate of stage', 'stage.gate.reopen': 'reopened the gate of stage' };

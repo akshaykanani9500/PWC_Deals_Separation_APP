@@ -32,6 +32,9 @@ export const ACTIONS = [
   'knowledge.edit',
   'audit.view',
   'admin.data',            // data admin page: DB driver, sync, export for Oracle
+  'access.request',        // ask for extra, time-bound access on a project (for yourself)
+  'access.approve',        // level-1 (engagement) approver: sponsor or approve requests for your team
+  'access.review',         // level-2 (Risk & Quality) approver: independent check before access goes live
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 
@@ -51,29 +54,29 @@ export const PERMISSIONS: Record<PersonaCode, PersonaPolicy> = {
   EXEC: {
     scope: 'all',
     summary: 'Sees every project and the portfolio, finance included. Creates new projects. Does not edit day-to-day work.',
-    actions: [...READ_BASE, 'portfolio.view', 'project.create', 'finance.view', 'contacts.view.full', 'notes.add', 'knowledge.view', 'audit.view'],
+    actions: [...READ_BASE, 'portfolio.view', 'project.create', 'finance.view', 'contacts.view.full', 'notes.add', 'knowledge.view', 'audit.view', 'access.approve'],
   },
   PARTNER: {
     scope: 'member',
     summary: 'Owns client relationships. Full control of own projects, approves stage gates and closes projects.',
     actions: [...READ_BASE, 'portfolio.view', 'project.create', 'project.edit', 'project.close', 'stage.edit', 'stage.gate.approve',
-      'activity.edit', 'task.edit', 'task.edit.own', 'finance.view', 'finance.edit', 'contacts.view.full', 'notes.add', 'ai.suggest', 'knowledge.view'],
+      'activity.edit', 'task.edit', 'task.edit.own', 'finance.view', 'finance.edit', 'contacts.view.full', 'notes.add', 'ai.suggest', 'knowledge.view', 'access.approve'],
   },
   MANAGER: {
     scope: 'member',
     summary: 'Runs projects day to day: edits stages, activities and tasks, assigns people, starts close-out.',
     actions: [...READ_BASE, 'portfolio.view', 'project.create', 'project.edit', 'project.close', 'stage.edit', 'activity.edit', 'task.edit',
-      'task.edit.own', 'finance.view', 'contacts.view.full', 'notes.add', 'ai.suggest', 'knowledge.view'],
+      'task.edit.own', 'finance.view', 'contacts.view.full', 'notes.add', 'ai.suggest', 'knowledge.view', 'access.request', 'access.approve'],
   },
   LEAD: {
     scope: 'member',
     summary: 'Leads a workstream: edits activities and tasks in the stages they own. No finance.',
-    actions: [...READ_BASE, 'activity.edit', 'task.edit', 'task.edit.own', 'contacts.view.full', 'notes.add', 'ai.suggest', 'knowledge.view'],
+    actions: [...READ_BASE, 'activity.edit', 'task.edit', 'task.edit.own', 'contacts.view.full', 'notes.add', 'ai.suggest', 'knowledge.view', 'access.request'],
   },
   ANALYST: {
     scope: 'member',
     summary: 'Updates status and notes on tasks assigned to them. Read-only elsewhere. Contacts masked.',
-    actions: [...READ_BASE, 'task.edit.own', 'notes.add', 'knowledge.view'],
+    actions: [...READ_BASE, 'task.edit.own', 'notes.add', 'knowledge.view', 'access.request'],
   },
   KM: {
     scope: 'all',
@@ -82,8 +85,8 @@ export const PERMISSIONS: Record<PersonaCode, PersonaPolicy> = {
   },
   RISK: {
     scope: 'all',
-    summary: 'Risk & Quality / DPO: read-only on all projects, sees the audit log, approves reuse consent at close-out.',
-    actions: [...READ_BASE, 'portfolio.view', 'audit.view', 'closeout.approve', 'knowledge.view'],
+    summary: 'Risk & Quality / DPO: read-only on all projects, sees the audit log, approves reuse consent at close-out and gives the second (final) approval on access requests.',
+    actions: [...READ_BASE, 'portfolio.view', 'audit.view', 'closeout.approve', 'knowledge.view', 'access.review'],
   },
   CLIENT: {
     scope: 'member',

@@ -9,6 +9,11 @@ export interface AuthContext {
   code: PersonaCode;
   actions: Action[];
   scope: 'all' | 'member';
+  /** Role actions before any project grant was applied (set on first use of applyProjectGrants). */
+  baseActions?: Action[];
+  /** Project whose grants are currently merged into `actions` (null = none). */
+  grantProjectId?: string | null;
+  grantIds?: string[];
 }
 
 export type AuthedRequest = Request & { auth: AuthContext };

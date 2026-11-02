@@ -15,10 +15,11 @@ import StageTabs from './StageTabs';
 import StageView from './StageView';
 import TaskPanel from './TaskPanel';
 import { StageEditorPanel } from './StageEditorPanel';
-import { EditProjectPanel, TeamPanel, FinancePanel } from './ProjectPanels';
+import { EditProjectPanel, TeamPanel } from './ProjectPanels';
+import RequestAccessPanel from '../../features/access/RequestAccessPanel';
 import CloseoutPanel from './CloseoutPanel';
 
-type PanelName = 'edit' | 'team' | 'finance' | 'closeout' | 'stages' | null;
+type PanelName = 'edit' | 'team' | 'access' | 'closeout' | 'stages' | null;
 
 export default function ProjectPage() {
   const { projectId = '', stageId, activityId } = useParams();
@@ -99,7 +100,7 @@ export default function ProjectPage() {
 
       <EditProjectPanel open={panel === 'edit'} detail={data} onClose={() => setPanel(null)} onSaved={bump} />
       <TeamPanel open={panel === 'team'} detail={data} onClose={() => setPanel(null)} onSaved={bump} />
-      <FinancePanel open={panel === 'finance'} detail={data} onClose={() => setPanel(null)} />
+      <RequestAccessPanel open={panel === 'access'} detail={data} onClose={() => setPanel(null)} onChanged={bump} />
       <CloseoutPanel open={panel === 'closeout'} detail={data} onClose={() => setPanel(null)} onClosed={bump} />
       <StageEditorPanel open={panel === 'stages'} detail={data} onClose={() => setPanel(null)} onSaved={bump} />
     </div>

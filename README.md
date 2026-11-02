@@ -7,6 +7,8 @@ The first app on the **PwC Deals Stack**: a tracker for M&A IT separation work, 
 - **Project drill-down:** each project opens into **Stages → Activities → Tasks**, shown as browser-style tabs.
 - **Edit panels with AI help:** every edit opens a side panel with an AI suggestion button (Suggest stages / activities / tasks / update), which drafts from past deals.
 - **Piku, the AI chat bubble:** answers in **English or Hindi**, by text or voice. It only uses data you are allowed to see.
+- **Finance workspace (v1.3):** a full-screen finance view per project: time and fees by stage, activity and person, who billed what, one-time separation cost and who pays, sources & uses of funding, the usual M&A funding routes and fictional demo funders. Visibility only: the app never arranges financing.
+- **Access governance (v1.3):** extra, time-bound permissions per project with **two-level approval** (level 1 engagement Partner/Manager, level 2 Risk & Quality), revocable at any time and fully audited.
 - **Close-out to knowledge hub:** closing a project sends redacted, consent-checked learnings to the knowledge hub. New projects and edits then use that knowledge.
 - **Google Sheets database,** designed so it can move to **Oracle** later (version 3).
 
@@ -85,11 +87,11 @@ If the key is wrong or Google can't be reached, the top-bar button turns red and
 | Workstream Lead | Arjun Nair, Priya Sharma, Rohan Desai | Edits activities and tasks in the stages they own; no finance |
 | Analyst | Neha Gupta, Karan Malhotra, Sneha Pillai, Aditya Joshi | Updates status and notes on tasks assigned to them; contacts masked |
 | Knowledge Manager | Meera Krishnan | Reviews close-out learnings into the AI knowledge hub |
-| Risk & Quality / DPO | Fatima Sheikh | Read-only on all projects; audit log; approves reuse consent |
+| Risk & Quality / DPO | Fatima Sheikh | Read-only on all projects; audit log; approves reuse consent; level-2 approver for access requests |
 | Client SMO viewer | Lisa Moreno, Kenji Watanabe | Read-only view of their own project; no fees, internal emails or phone numbers |
 | Platform Admin | Rahul Verma | Data admin page: database driver, reload, Oracle and Excel export |
 
-The rules live in `shared/permissions.ts`.
+The rules live in `shared/permissions.ts`; extra per-project access lives in `shared/access.ts`.
 
 - **Server-side checks:** the server checks every request against these rules, so hiding a button is never the only protection.
 - **Same rules for Piku:** Piku and the AI suggestions follow exactly the same rules.
@@ -104,6 +106,30 @@ The rules live in `shared/permissions.ts`.
 5. As **Ananya Rao**, close a project.
 6. Sign in as **Meera Krishnan (Knowledge Manager)** and approve the learnings.
 7. As a manager, create a new project with **Suggest a plan from past deals**. The approved learnings now appear as a source.
+
+### Finance workspace and access approvals (v1.3)
+
+**Finance** on a project page opens `/projects/<id>/finance`, a full-screen workspace with six tabs:
+
+| Tab | What it answers |
+|---|---|
+| Overview | Budget, invoiced, paid, outstanding, planned effort, separation cost, secured vs unfunded money, and a stage-by-stage table of days, hours, fees invoiced and separation cost |
+| Time & fees | Hours and effort value by **person** or **activity** (demo rate card), and who billed what |
+| Billing | Every invoice with status (Draft, Sent, Overdue, Paid), who raised it, and "worked, not yet billed" |
+| Costs & funding | Sources & uses: one-time cost by category and who pays (seller, buyer, shared), funding sources and their status |
+| Funding options | How deal teams usually fund separation cost (SPA seller contribution, buyer cash, bridge/term loans, vendor deferred payment, PE, private credit, escrow, incentives) and fictional demo funders you can add to the plan |
+| TSA charges | TSA services, run-rate, exit dates and extension uplift |
+
+Who can do what: Deals Leader and Managers **see** finance; the Engagement Partner **sees and edits** it; Leads, Analysts and clients do not see it unless an access request is approved (clients never).
+
+**Access requests (two-level governance).** Use **Request access** (or **Access & approvals** for Partners/Managers) under the project header, or the **Access** page in the top bar.
+
+1. A Lead / Analyst / Manager asks for a permission on one project for 7, 30 or 90 days with a reason, or a Partner/Manager sponsors it for a junior team member.
+2. **Level 1:** a Partner or Manager on that project who holds the permission and is more senior (a sponsor counts as level 1).
+3. **Level 2:** Risk & Quality checks need-to-know, clean team and confidentiality, then the access goes live.
+4. Access applies only inside that project (never on the dashboard or other deals), expires on its own, can be revoked any time, and every step is in the audit log. Nobody approves their own request, and role-only rights (gate approval, close-out, audit, admin) cannot be requested.
+
+**Try it:** sign in as **Sneha Pillai** and open Project Rioja → Finance (locked; her request is waiting). Sign in as **Fatima Sheikh** → **Access** → approve. Back as Sneha, finance opens read-only. **Rohan Desai** already has approved finance access on Rioja only.
 
 ---
 
@@ -177,12 +203,12 @@ shared/          schema (tables), permissions, types: used by server AND client
 server/src/
   db/            Db interface + LocalJson / Google Sheets / (Oracle v3) adapters
   routes/        REST API (docs/API.md)
-  services/      access rules, roll-up of % complete and RAG, audit
+  services/      access rules, grants (two-level access), finance workspace, roll-up of % complete and RAG, audit
   ai/            Piku router + domain agents, Gemini client with offline fallback,
                  suggestions, summaries, email/meeting drafts, close-out redaction
 client/src/
-  pages/         login, dashboard, project → stage → activity, knowledge, audit, admin
-  features/      piku (chat bubble) and ai (suggest button, summary card, actions)
+  pages/         login, dashboard, project → stage → activity, finance workspace, access & approvals, knowledge, audit, admin
+  features/      piku (chat bubble), ai (suggest button, summary card, actions), access (request panel, request cards)
 scripts/         seed, Google Sheets init, Excel export, Oracle DDL/data export
 db/              seed snapshot (JSON) and generated Oracle SQL
 tests/e2e/       Playwright tests per persona

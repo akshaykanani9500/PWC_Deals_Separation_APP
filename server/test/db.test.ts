@@ -63,3 +63,23 @@ describe('Oracle readiness', () => {
     expect(ddl).toContain("CHECK (is_deleted IN ('Y','N'))");
   });
 });
+
+describe('v1.3 upgrade top-up', () => {
+  it('fills the finance and access tables once when they are empty, then never again', async () => {
+    const { LocalJsonAdapter } = await import('../src/db/adapters/LocalJsonAdapter');
+    const { buildSeed } = await import('../../scripts/seed');
+    const { TABLES } = await import('../../shared/schema');
+    const { ensureFinanceDemo } = await import('../src/services/finance');
+    const db = new LocalJsonAdapter('', { inMemory: true });
+    await db.init();
+    const data = await buildSeed();
+    for (const t of TABLES) await db.replaceTable(t.name as any, ['funding_sources', 'cost_items', 'invoices', 'access_grants'].includes(t.name) ? [] : data[t.name]);
+    expect(await ensureFinanceDemo(db)).toBe(true);
+    const c = await db.counts();
+    expect(c.funding_sources).toBeGreaterThan(0);
+    expect(c.cost_items).toBeGreaterThan(0);
+    expect(c.invoices).toBeGreaterThan(0);
+    expect(c.access_grants).toBeGreaterThan(0);
+    expect(await ensureFinanceDemo(db)).toBe(false);
+  });
+});

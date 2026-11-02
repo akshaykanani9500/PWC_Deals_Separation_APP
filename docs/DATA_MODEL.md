@@ -1,6 +1,6 @@
 # Data model
 
-The database has **15 tables**. One definition in [`shared/schema.ts`](../shared/schema.ts) drives all three storage options:
+The database has **19 tables** (schema version 2; v1.3 added `funding_sources`, `cost_items`, `invoices` and `access_grants`). One definition in [`shared/schema.ts`](../shared/schema.ts) drives all three storage options:
 
 | Storage | When | How a table is stored |
 |---|---|---|
@@ -17,6 +17,8 @@ personas 1─* users
 users ─< project_members >─ projects            (who is staffed where = what they can see)
 projects 1─* stages 1─* activities 1─* tasks      (the tracker: tabs, sub-tabs, table rows)
 projects 1─* contacts, communications, quick_notes, finance_entries, tsa_services
+projects 1─* funding_sources, cost_items, invoices  (finance workspace: sources & uses, billing)
+projects 1─* access_grants *─1 users             (extra, time-bound permissions; L1 + L2 approvals)
 communications / quick_notes may point at a stage, activity or task
 projects ─(close-out)─> knowledge_items           (AI knowledge hub; source project hidden)
 users 1─* chat_messages (Piku history)            audit_log records every write and denial
@@ -33,6 +35,11 @@ users 1─* chat_messages (Piku history)            audit_log records every writ
 7. **No hard deletes**: rows get `is_deleted = 'Y'`. History and the audit trail stay complete.
 8. **Foreign keys** are declared in the schema (`ref`) and become FK constraints plus indexes in Oracle.
 9. **Computed values** (`percent_complete`, `rag`, derived `status` of activities and stages) are stored so dashboards and Oracle reports read them directly; the server recalculates them after every write (see the roll-up rule in `docs/API.md`).
+
+### Upgrading an existing database to v1.3
+New tables are created automatically on start-up (new JSON files locally, new tabs in the Google Sheet). If all four new
+tables are empty, the server fills them once with demo finance and access-request rows for the existing demo projects
+(`ensureFinanceDemo` in `server/src/services/finance.ts`). Nothing else in your data is changed.
 
 ### Editing the Google Sheet by hand
 - Do not rename or reorder the header row. New columns added to the schema are appended automatically on start-up.
@@ -375,6 +382,108 @@ Piku conversation history (per user, with the page context it was asked on).
 | language | string(5) |  | en, hi |  |
 | ai_mode | string(20) |  |  | gemini model name or "offline" |
 | sources | json |  |  | Records the answer was built from |
+| created_at | datetime | yes |  |  |
+| created_by | id |  | users.user_id |  |
+| updated_at | datetime |  |  |  |
+| updated_by | id |  | users.user_id |  |
+| is_deleted | bool | yes |  | 'Y' when soft-deleted |
+
+### `funding_sources` (id prefix `FND`)
+
+Finance workspace: where the money for one-time separation costs comes from (sources side of sources & uses). Visibility only; the app never arranges financing.
+
+| Column | Type | Required | Links to / allowed values | Notes |
+|---|---|---|---|---|
+| funding_id | id | yes |  | primary key |
+| project_id | id | yes | projects.project_id |  |
+| source_type | string(40) | yes | Seller contribution (SPA), Buyer balance-sheet cash, Bridge loan, Term loan, Revolving credit facility, Vendor / deferred payment, Private equity equity, Venture / private credit, Escrow / holdback release, Government incentive |  |
+| provider | string(120) |  |  | Lender / investor / party (demo names are fictional) |
+| amount | money |  |  |  |
+| status | string(20) | yes | Identified, In discussion, Term sheet, Committed, Drawn, Declined |  |
+| interest_rate_pct | number |  |  |  |
+| tenor_months | int |  |  |  |
+| purpose | text |  |  |  |
+| expected_date | date |  |  |  |
+| owner_user_id | id |  | users.user_id | PwC person tracking this source |
+| notes | text |  |  |  |
+| created_at | datetime | yes |  |  |
+| created_by | id |  | users.user_id |  |
+| updated_at | datetime |  |  |  |
+| updated_by | id |  | users.user_id |  |
+| is_deleted | bool | yes |  | 'Y' when soft-deleted |
+
+### `cost_items` (id prefix `CST`)
+
+Finance workspace: one-time separation cost lines (uses side), by stage, category and who pays.
+
+| Column | Type | Required | Links to / allowed values | Notes |
+|---|---|---|---|---|
+| cost_id | id | yes |  | primary key |
+| project_id | id | yes | projects.project_id |  |
+| stage_id | id |  | stages.stage_id |  |
+| activity_id | id |  | activities.activity_id |  |
+| category | string(40) | yes | IT infrastructure, Applications and licences, Data migration, Network and sites, People and retention, Third-party advisors, TSA and extensions, Contingency |  |
+| description | string(240) |  |  |  |
+| amount | money |  |  |  |
+| status | string(20) | yes | Planned, Committed, Spent |  |
+| payer | string(20) |  | Seller, Buyer, Shared |  |
+| vendor | string(120) |  |  |  |
+| created_at | datetime | yes |  |  |
+| created_by | id |  | users.user_id |  |
+| updated_at | datetime |  |  |  |
+| updated_by | id |  | users.user_id |  |
+| is_deleted | bool | yes |  | 'Y' when soft-deleted |
+
+### `invoices` (id prefix `INV`)
+
+Finance workspace: PwC fee invoices to the client (who billed what, when, and whether it is paid).
+
+| Column | Type | Required | Links to / allowed values | Notes |
+|---|---|---|---|---|
+| invoice_id | id | yes |  | primary key |
+| project_id | id | yes | projects.project_id |  |
+| invoice_no | string(40) | yes |  |  |
+| period_month | string(7) |  |  | YYYY-MM |
+| stage_id | id |  | stages.stage_id |  |
+| description | string(240) |  |  |  |
+| amount | money |  |  |  |
+| status | string(20) | yes | Draft, Sent, Paid, Overdue |  |
+| issued_date | date |  |  |  |
+| due_date | date |  |  |  |
+| paid_date | date |  |  |  |
+| billed_by_user_id | id |  | users.user_id | Partner or manager who raised the bill |
+| billed_to | string(120) |  |  |  |
+| created_at | datetime | yes |  |  |
+| created_by | id |  | users.user_id |  |
+| updated_at | datetime |  |  |  |
+| updated_by | id |  | users.user_id |  |
+| is_deleted | bool | yes |  | 'Y' when soft-deleted |
+
+### `access_grants` (id prefix `GRT`)
+
+Extra, time-bound permission for one person on one project. Two-level governance: L1 engagement approval, L2 Risk & Quality.
+
+| Column | Type | Required | Links to / allowed values | Notes |
+|---|---|---|---|---|
+| grant_id | id | yes |  | primary key |
+| project_id | id | yes | projects.project_id |  |
+| grantee_user_id | id | yes | users.user_id |  |
+| permission_code | string(40) | yes |  |  |
+| justification | text | yes |  |  |
+| duration_days | int |  |  |  |
+| status | string(20) | yes | Pending L1, Pending L2, Active, Rejected, Revoked, Cancelled |  |
+| requested_by | id |  | users.user_id |  |
+| l1_approver_id | id |  | users.user_id |  |
+| l1_decided_at | datetime |  |  |  |
+| l1_note | text |  |  |  |
+| l2_approver_id | id |  | users.user_id |  |
+| l2_decided_at | datetime |  |  |  |
+| l2_note | text |  |  |  |
+| starts_at | datetime |  |  |  |
+| expires_at | datetime |  |  |  |
+| revoked_by | id |  | users.user_id |  |
+| revoked_at | datetime |  |  |  |
+| revoke_reason | text |  |  |  |
 | created_at | datetime | yes |  |  |
 | created_by | id |  | users.user_id |  |
 | updated_at | datetime |  |  |  |

@@ -10,6 +10,8 @@ const ProjectPage = lazy(() => import('./pages/project/ProjectPage'));
 const KnowledgePage = lazy(() => import('./pages/KnowledgePage'));
 const AuditPage = lazy(() => import('./pages/AuditPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
+const AccessPage = lazy(() => import('./pages/AccessPage'));
+const FinancePage = lazy(() => import('./pages/finance/FinancePage'));
 
 function PageFallback() {
   return <div className="flex h-64 items-center justify-center text-ink-muted"><Spinner className="mr-2" /> Loading</div>;
@@ -41,9 +43,11 @@ export default function App() {
       <Route element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route index element={page(<DashboardPage />)} />
         <Route path="projects/:projectId" element={page(<ProjectPage />)} />
+        <Route path="projects/:projectId/finance" element={page(<FinancePage />)} />
         <Route path="projects/:projectId/stages/:stageId" element={page(<ProjectPage />)} />
         <Route path="projects/:projectId/stages/:stageId/activities/:activityId" element={page(<ProjectPage />)} />
         <Route path="knowledge" element={<RequireAction action="knowledge.view">{page(<KnowledgePage />)}</RequireAction>} />
+        <Route path="access" element={page(<AccessPage />)} />
         <Route path="audit" element={<RequireAction action="audit.view">{page(<AuditPage />)}</RequireAction>} />
         <Route path="admin/data" element={<RequireAction action="admin.data">{page(<AdminPage />)}</RequireAction>} />
         <Route path="*" element={<NotFoundPage />} />

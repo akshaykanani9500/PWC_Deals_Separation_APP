@@ -51,7 +51,9 @@ for (const persona of PERSONAS) {
     expect(detail.perms.canEditStages).toBe(can(persona, 'stage.edit'));
 
     // Header buttons
-    await expect(page.getByRole('button', { name: 'Finance' })).toHaveCount(can(persona, 'finance.view') ? 1 : 0);
+    // Finance opens the full-screen workspace (a link). Roles that can ask for access see it too (locked inside).
+    await expect(page.getByRole('link', { name: 'Finance', exact: true })).toHaveCount(detail.perms.canViewFinance || detail.perms.canRequestAccess ? 1 : 0);
+    await expect(page.getByRole('button', { name: /^(Access & approvals|Request access)$/ })).toHaveCount(detail.perms.canRequestAccess || detail.perms.canSponsorAccess ? 1 : 0);
     await expect(page.getByRole('button', { name: 'Close project' })).toHaveCount(detail.perms.canClose ? 1 : 0);
     const editProject = page.getByRole('button', { name: 'Edit project' });
     if (await editProject.count()) {

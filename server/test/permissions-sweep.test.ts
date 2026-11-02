@@ -5,6 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { makeTestApp } from './helpers';
 import { PERMISSIONS, FINANCE_FIELDS } from '../../shared/permissions';
+import { grantActions } from '../../shared/access';
 
 let t: Awaited<ReturnType<typeof makeTestApp>>;
 beforeAll(async () => { t = await makeTestApp(); }, 60000);
@@ -26,6 +27,14 @@ function expectedVisible(userId: string): Set<string> {
   for (const m of t.data.project_members) if (m.user_id === userId && m.is_deleted !== 'Y') ids.add(m.project_id);
   for (const p of live) if (p.partner_user_id === userId || p.manager_user_id === userId) ids.add(p.project_id);
   return ids;
+}
+
+/** Approved, unexpired access grants (two-level governance) add actions on ONE project only. */
+function grantedOn(userId: string, projectId: string): string[] {
+  const now = Date.now();
+  return (t.data.access_grants ?? [])
+    .filter((g) => g.grantee_user_id === userId && g.project_id === projectId && g.status === 'Active' && (!g.expires_at || Date.parse(g.expires_at) > now))
+    .flatMap((g) => grantActions(g.permission_code));
 }
 
 function noFinance(obj: Record<string, unknown>) {
@@ -80,16 +89,19 @@ describe('permission leak sweep', () => {
           expect([403, 404], `${label} AI summary of invisible ${pid}`).toContain(sum.status);
           continue;
         }
+        const granted = grantedOn(user.user_id, pid);
+        const financeHere = finance || granted.includes('finance.view');
+        const contactsHere = fullContacts || granted.includes('contacts.view.full');
         const detail = await api.get(`/api/projects/${pid}`);
         expect(detail.status, `${label} ${pid}`).toBe(200);
-        if (!finance) noFinance(detail.body.project);
+        if (!financeHere) noFinance(detail.body.project);
         const fin = await api.get(`/api/projects/${pid}/finance`);
-        expect(fin.status, `${label} finance ${pid}`).toBe(finance ? 200 : 403);
+        expect(fin.status, `${label} finance ${pid}`).toBe(financeHere ? 200 : 403);
 
         const contacts = await api.get(`/api/projects/${pid}/contacts`);
         expect(contacts.status).toBe(200);
         if (code === 'CLIENT') expect(contacts.body).toEqual([]);
-        else if (!fullContacts) for (const c of contacts.body) {
+        else if (!contactsHere) for (const c of contacts.body) {
           if (c.email) expect(c.email, `${label} email not masked`).toContain('•');
           if (c.phone) expect(c.phone, `${label} phone not masked`).toContain('•');
         }
@@ -101,7 +113,7 @@ describe('permission leak sweep', () => {
             expect(c.channel).toBe('Meeting');
             expect(RAW_PHONE.test(`${c.subject ?? ''} ${c.body ?? ''}`), `${label} phone in client meeting`).toBe(false);
           }
-        } else if (!fullContacts) {
+        } else if (!contactsHere) {
           for (const c of comms.body) expect(RAW_PHONE.test(`${c.subject ?? ''} ${c.body ?? ''}`), `${label} raw phone in comms`).toBe(false);
         }
 
@@ -111,7 +123,7 @@ describe('permission leak sweep', () => {
           expect(ad.body.contacts).toEqual([]);
           expect(ad.body.notes).toEqual([]);
           for (const c of ad.body.communications) expect(c.channel).toBe('Meeting');
-        } else if (!fullContacts) {
+        } else if (!contactsHere) {
           for (const c of ad.body.contacts) if (c.phone) expect(c.phone).toContain('•');
         }
         const td = await api.get(`/api/tasks/${task!.task_id}`);

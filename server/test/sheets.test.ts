@@ -1,7 +1,7 @@
 /** SheetsAdapter against an in-memory fake of the Google Sheets API (no network needed). */
 import { describe, expect, it } from 'vitest';
 import { SheetsAdapter } from '../src/db/adapters/SheetsAdapter';
-import { TABLES } from '../../shared/schema';
+import { SCHEMA_VERSION, TABLES } from '../../shared/schema';
 
 function fakeSheets() {
   const tabs = new Map<string, unknown[][]>();
@@ -35,7 +35,7 @@ describe('SheetsAdapter', () => {
     await db.ensureTabs();
     await (db as any).loadAll();
     for (const t of TABLES) expect(fake.tabs.get(t.name)![0]).toEqual(t.columns.map((c) => c.name));
-    expect(fake.tabs.get('_meta')![1]).toEqual(['schema_version', '1']);
+    expect(fake.tabs.get('_meta')![1]).toEqual(['schema_version', String(SCHEMA_VERSION)]);
 
     const a = await db.insert<any>('projects', { code_name: 'Project A', status: 'Active', fee_budget: 100 });
     const b = await db.insert<any>('projects', { code_name: 'Project B', status: 'Planning' });

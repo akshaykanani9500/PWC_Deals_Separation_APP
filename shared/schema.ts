@@ -60,6 +60,17 @@ export const KNOWLEDGE_STATUS = ['Pending Review', 'Approved', 'Rejected'] as co
 export const CONSENT_STATUS = ['Granted', 'Not Granted', 'Pending'] as const;
 export const SENSITIVITY = ['Public', 'Internal', 'Confidential', 'Restricted'] as const;
 export const LANGUAGES = ['en', 'hi'] as const;
+// Finance workspace (v1.3)
+export const FUNDING_TYPES = ['Seller contribution (SPA)', 'Buyer balance-sheet cash', 'Bridge loan', 'Term loan', 'Revolving credit facility',
+  'Vendor / deferred payment', 'Private equity equity', 'Venture / private credit', 'Escrow / holdback release', 'Government incentive'] as const;
+export const FUNDING_STATUS = ['Identified', 'In discussion', 'Term sheet', 'Committed', 'Drawn', 'Declined'] as const;
+export const COST_CATEGORIES = ['IT infrastructure', 'Applications and licences', 'Data migration', 'Network and sites', 'People and retention',
+  'Third-party advisors', 'TSA and extensions', 'Contingency'] as const;
+export const COST_STATUS = ['Planned', 'Committed', 'Spent'] as const;
+export const COST_PAYERS = ['Seller', 'Buyer', 'Shared'] as const;
+export const INVOICE_STATUS = ['Draft', 'Sent', 'Paid', 'Overdue'] as const;
+// Access governance (v1.3)
+export const GRANT_STATUS = ['Pending L1', 'Pending L2', 'Active', 'Rejected', 'Revoked', 'Cancelled'] as const;
 
 const audit: ColumnDef[] = [
   { name: 'created_at', type: 'datetime', required: true },
@@ -367,6 +378,96 @@ export const TABLES: TableDef[] = [
     ],
   },
   {
+    name: 'funding_sources',
+    idPrefix: 'FND',
+    primaryKey: 'funding_id',
+    description: 'Finance workspace: where the money for one-time separation costs comes from (sources side of sources & uses). Visibility only; the app never arranges financing.',
+    columns: [
+      { name: 'funding_id', type: 'id', required: true },
+      { name: 'project_id', type: 'id', required: true, ref: 'projects.project_id' },
+      { name: 'source_type', type: 'string', length: 40, required: true, enumValues: FUNDING_TYPES },
+      { name: 'provider', type: 'string', length: 120, description: 'Lender / investor / party (demo names are fictional)' },
+      { name: 'amount', type: 'money' },
+      { name: 'status', type: 'string', length: 20, required: true, enumValues: FUNDING_STATUS },
+      { name: 'interest_rate_pct', type: 'number' },
+      { name: 'tenor_months', type: 'int' },
+      { name: 'purpose', type: 'text' },
+      { name: 'expected_date', type: 'date' },
+      { name: 'owner_user_id', type: 'id', ref: 'users.user_id', description: 'PwC person tracking this source' },
+      { name: 'notes', type: 'text' },
+      ...audit,
+    ],
+  },
+  {
+    name: 'cost_items',
+    idPrefix: 'CST',
+    primaryKey: 'cost_id',
+    description: 'Finance workspace: one-time separation cost lines (uses side), by stage, category and who pays.',
+    columns: [
+      { name: 'cost_id', type: 'id', required: true },
+      { name: 'project_id', type: 'id', required: true, ref: 'projects.project_id' },
+      { name: 'stage_id', type: 'id', ref: 'stages.stage_id' },
+      { name: 'activity_id', type: 'id', ref: 'activities.activity_id' },
+      { name: 'category', type: 'string', length: 40, required: true, enumValues: COST_CATEGORIES },
+      { name: 'description', type: 'string', length: 240 },
+      { name: 'amount', type: 'money' },
+      { name: 'status', type: 'string', length: 20, required: true, enumValues: COST_STATUS },
+      { name: 'payer', type: 'string', length: 20, enumValues: COST_PAYERS },
+      { name: 'vendor', type: 'string', length: 120 },
+      ...audit,
+    ],
+  },
+  {
+    name: 'invoices',
+    idPrefix: 'INV',
+    primaryKey: 'invoice_id',
+    description: 'Finance workspace: PwC fee invoices to the client (who billed what, when, and whether it is paid).',
+    columns: [
+      { name: 'invoice_id', type: 'id', required: true },
+      { name: 'project_id', type: 'id', required: true, ref: 'projects.project_id' },
+      { name: 'invoice_no', type: 'string', length: 40, required: true },
+      { name: 'period_month', type: 'string', length: 7, description: 'YYYY-MM' },
+      { name: 'stage_id', type: 'id', ref: 'stages.stage_id' },
+      { name: 'description', type: 'string', length: 240 },
+      { name: 'amount', type: 'money' },
+      { name: 'status', type: 'string', length: 20, required: true, enumValues: INVOICE_STATUS },
+      { name: 'issued_date', type: 'date' },
+      { name: 'due_date', type: 'date' },
+      { name: 'paid_date', type: 'date' },
+      { name: 'billed_by_user_id', type: 'id', ref: 'users.user_id', description: 'Partner or manager who raised the bill' },
+      { name: 'billed_to', type: 'string', length: 120 },
+      ...audit,
+    ],
+  },
+  {
+    name: 'access_grants',
+    idPrefix: 'GRT',
+    primaryKey: 'grant_id',
+    description: 'Extra, time-bound permission for one person on one project. Two-level governance: L1 engagement approval, L2 Risk & Quality.',
+    columns: [
+      { name: 'grant_id', type: 'id', required: true },
+      { name: 'project_id', type: 'id', required: true, ref: 'projects.project_id' },
+      { name: 'grantee_user_id', type: 'id', required: true, ref: 'users.user_id' },
+      { name: 'permission_code', type: 'string', length: 40, required: true },
+      { name: 'justification', type: 'text', required: true },
+      { name: 'duration_days', type: 'int' },
+      { name: 'status', type: 'string', length: 20, required: true, enumValues: GRANT_STATUS },
+      { name: 'requested_by', type: 'id', ref: 'users.user_id' },
+      { name: 'l1_approver_id', type: 'id', ref: 'users.user_id' },
+      { name: 'l1_decided_at', type: 'datetime' },
+      { name: 'l1_note', type: 'text' },
+      { name: 'l2_approver_id', type: 'id', ref: 'users.user_id' },
+      { name: 'l2_decided_at', type: 'datetime' },
+      { name: 'l2_note', type: 'text' },
+      { name: 'starts_at', type: 'datetime' },
+      { name: 'expires_at', type: 'datetime' },
+      { name: 'revoked_by', type: 'id', ref: 'users.user_id' },
+      { name: 'revoked_at', type: 'datetime' },
+      { name: 'revoke_reason', type: 'text' },
+      ...audit,
+    ],
+  },
+  {
     name: 'audit_log',
     idPrefix: 'AUD',
     primaryKey: 'audit_id',
@@ -390,7 +491,8 @@ export const TABLE_NAMES = TABLES.map((t) => t.name);
 export type TableName =
   | 'personas' | 'users' | 'projects' | 'project_members' | 'stages' | 'activities' | 'tasks'
   | 'contacts' | 'communications' | 'quick_notes' | 'finance_entries' | 'tsa_services'
-  | 'knowledge_items' | 'chat_messages' | 'audit_log';
+  | 'knowledge_items' | 'chat_messages' | 'audit_log'
+  | 'funding_sources' | 'cost_items' | 'invoices' | 'access_grants';
 
 export function getTable(name: string): TableDef {
   const t = TABLES.find((x) => x.name === name);
@@ -399,4 +501,4 @@ export function getTable(name: string): TableDef {
 }
 
 /** Bump when columns change; stored in the `_meta` sheet tab so the app can warn about an old sheet. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;

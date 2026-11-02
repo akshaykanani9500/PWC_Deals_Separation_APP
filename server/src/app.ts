@@ -13,6 +13,8 @@ import { notesRouter } from './routes/notes';
 import { closeoutRouter, knowledgeRouter } from './routes/knowledge';
 import { adminRouter, auditRouter } from './routes/admin';
 import { createAiRouter } from './routes/ai';
+import { financeRouter } from './routes/finance';
+import { accessRouter } from './routes/access';
 import { requestAiMiddleware } from './ai/requestAi';
 
 export function createApp(db: Db): express.Express {
@@ -30,7 +32,8 @@ export function createApp(db: Db): express.Express {
 
   const auth = authenticate(db);
   api.use('/dashboard', auth, dashboardRouter(db));
-  api.use('/projects', auth, closeoutRouter(db), projectsRouter(db));
+  api.use('/projects', auth, closeoutRouter(db), financeRouter(db), projectsRouter(db));
+  api.use('/access', auth, accessRouter(db));
   api.use('/stages', auth, stagesRouter(db));
   api.use('/activities', auth, activitiesRouter(db));
   api.use('/tasks', auth, tasksRouter(db));

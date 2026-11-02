@@ -49,6 +49,20 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   );
 });
 
+/** A router link that looks like a Button (use for navigation, so we never nest a button inside a link). */
+export function ButtonLink({ to, icon, children, variant = 'secondary', size = 'md', className, title }: {
+  to: string; icon?: ReactNode; children: ReactNode; variant?: Variant; size?: Size; className?: string; title?: string;
+}) {
+  return (
+    <Link to={to} title={title} className={clsx(
+      'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors whitespace-nowrap',
+      size === 'sm' ? 'h-8 px-2.5 text-[13px]' : 'h-9 px-3.5 text-[13.5px]', variants[variant], className,
+    )}>
+      {icon}{children}
+    </Link>
+  );
+}
+
 /** Wraps a disabled control so the tooltip still shows (disabled buttons swallow hover in some browsers). */
 export function Gate({ allowed, reason, children }: { allowed: boolean; reason: string; children: ReactNode }) {
   if (allowed) return <>{children}</>;
@@ -85,6 +99,25 @@ const statusTone: Record<string, string> = {
   Exiting: 'bg-amber-soft text-amber',
   Exited: 'bg-green-soft text-green',
   Extended: 'bg-rose-soft text-rose',
+  // access requests (v1.3)
+  'Pending L1': 'bg-amber-soft text-amber',
+  'Pending L2': 'bg-amber-soft text-amber',
+  Expired: 'bg-sunken text-ink-muted',
+  Revoked: 'bg-rose-soft text-rose',
+  Cancelled: 'bg-sunken text-ink-muted',
+  // finance workspace (v1.3)
+  Identified: 'bg-sunken text-ink-soft',
+  'In discussion': 'bg-piku-soft text-piku',
+  'Term sheet': 'bg-amber-soft text-amber',
+  Committed: 'bg-blue-soft text-blue',
+  Drawn: 'bg-green-soft text-green',
+  Declined: 'bg-rose-soft text-rose',
+  Draft: 'bg-sunken text-ink-soft',
+  Sent: 'bg-blue-soft text-blue',
+  Paid: 'bg-green-soft text-green',
+  Overdue: 'bg-rose-soft text-rose',
+  Planned: 'bg-sunken text-ink-soft',
+  Spent: 'bg-green-soft text-green',
   // priority
   Critical: 'bg-rose-soft text-rose',
   High: 'bg-amber-soft text-amber',
@@ -99,6 +132,10 @@ const statusIcon: Record<string, ReactNode> = {
   Closing: <Clock3 size={12} />, Closed: <CheckCircle2 size={12} />, 'Not Ready': <CircleDashed size={12} />, 'Pending Approval': <Clock3 size={12} />,
   Approved: <CheckCircle2 size={12} />, 'Pending Review': <Clock3 size={12} />, Rejected: <XCircle size={12} />, Granted: <CheckCircle2 size={12} />,
   'Not Granted': <XCircle size={12} />, Pending: <Clock3 size={12} />,
+  'Pending L1': <Clock3 size={12} />, 'Pending L2': <Clock3 size={12} />, Expired: <CircleDashed size={12} />, Revoked: <Ban size={12} />,
+  Cancelled: <XCircle size={12} />, Identified: <CircleDashed size={12} />, 'In discussion': <CircleDot size={12} />, 'Term sheet': <Clock3 size={12} />,
+  Committed: <CircleDot size={12} />, Drawn: <CheckCircle2 size={12} />, Declined: <XCircle size={12} />, Draft: <CircleDashed size={12} />,
+  Sent: <CircleDot size={12} />, Paid: <CheckCircle2 size={12} />, Overdue: <AlertTriangle size={12} />, Planned: <CircleDashed size={12} />, Spent: <CheckCircle2 size={12} />,
 };
 
 export function Pill({ children, tone, className, icon = true }: { children: ReactNode; tone?: string; className?: string; icon?: boolean }) {

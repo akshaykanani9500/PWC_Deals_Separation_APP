@@ -5,6 +5,7 @@
 import type {
   PERSONA_CODES, PROJECT_STATUS, RAG, WORK_STATUS, PRIORITY, GATE_STATUS, DEAL_TYPES, INDUSTRIES,
   COMM_CHANNELS, CONTACT_SIDES, MEMBER_ROLES, KNOWLEDGE_TYPES, KNOWLEDGE_STATUS, CONSENT_STATUS, SENSITIVITY, LANGUAGES,
+  FUNDING_TYPES, FUNDING_STATUS, COST_CATEGORIES, COST_STATUS, COST_PAYERS, INVOICE_STATUS, GRANT_STATUS,
 } from './schema';
 import type { Action } from './permissions';
 
@@ -121,6 +122,31 @@ export interface AuditEntry {
   entity_id?: string | null; project_id?: string | null; details?: string | null; ai_generated?: YN; created_at: string;
 }
 
+export interface FundingSource extends AuditCols {
+  funding_id: string; project_id: string; source_type: (typeof FUNDING_TYPES)[number]; provider?: string; amount?: number;
+  status: (typeof FUNDING_STATUS)[number]; interest_rate_pct?: number | null; tenor_months?: number | null; purpose?: string;
+  expected_date?: string | null; owner_user_id?: string | null; notes?: string;
+}
+
+export interface CostItem extends AuditCols {
+  cost_id: string; project_id: string; stage_id?: string | null; activity_id?: string | null; category: (typeof COST_CATEGORIES)[number];
+  description?: string; amount?: number; status: (typeof COST_STATUS)[number]; payer?: (typeof COST_PAYERS)[number]; vendor?: string;
+}
+
+export interface Invoice extends AuditCols {
+  invoice_id: string; project_id: string; invoice_no: string; period_month?: string; stage_id?: string | null; description?: string;
+  amount?: number; status: (typeof INVOICE_STATUS)[number]; issued_date?: string | null; due_date?: string | null; paid_date?: string | null;
+  billed_by_user_id?: string | null; billed_to?: string;
+}
+
+export interface AccessGrant extends AuditCols {
+  grant_id: string; project_id: string; grantee_user_id: string; permission_code: string; justification: string; duration_days?: number;
+  status: (typeof GRANT_STATUS)[number]; requested_by?: string | null;
+  l1_approver_id?: string | null; l1_decided_at?: string | null; l1_note?: string | null;
+  l2_approver_id?: string | null; l2_decided_at?: string | null; l2_note?: string | null;
+  starts_at?: string | null; expires_at?: string | null; revoked_by?: string | null; revoked_at?: string | null; revoke_reason?: string | null;
+}
+
 // ---------------- API payloads ----------------
 
 /** Who is signed in. Returned by POST /api/auth/login and GET /api/auth/me */
@@ -149,7 +175,11 @@ export interface ProjectDetail {
   perms: {
     canEditProject: boolean; canEditStages: boolean; canClose: boolean; canApproveGate: boolean;
     canViewFinance: boolean; canAddNotes: boolean; canUseAiSuggest: boolean;
+    /** v1.3 */
+    canEditFinance?: boolean; canRequestAccess?: boolean; canSponsorAccess?: boolean;
   };
+  /** Extra permissions this user holds on THIS project through approved, unexpired access grants. */
+  grants?: { grant_id: string; permission_code: string; label: string; expires_at?: string | null }[];
 }
 
 export interface StageDetail {
@@ -244,3 +274,31 @@ export interface CloseoutPreview {
 }
 
 export interface ApiError { error: string; code?: 'UNAUTHENTICATED' | 'FORBIDDEN' | 'NOT_FOUND' | 'VALIDATION' | 'SERVER' }
+
+// ---------------- Finance workspace (v1.3) ----------------
+export interface EffortRow { key: string; label: string; hours: number; doneHours: number; value: number; tasks: number; people?: number; start?: string | null; end?: string | null; sub?: string }
+export interface FinanceWorkspace {
+  project: { project_id: string; code_name: string; currency: string; client_alias?: string; status: string; clean_team_required?: string };
+  entries: FinanceEntry[];
+  tsaServices: TsaService[];
+  totals: Record<string, number>;
+  rateCard: { persona: string; label: string; rate: number }[];
+  effort: { byStage: EffortRow[]; byActivity: EffortRow[]; byPerson: (EffortRow & { persona?: string; billedBy?: number })[] };
+  invoices: (Invoice & { billed_by_name?: string; stage_name?: string })[];
+  costItems: (CostItem & { stage_name?: string; activity_name?: string })[];
+  fundingSources: (FundingSource & { owner_name?: string })[];
+  sourcesUses: {
+    uses: { category: string; planned: number; committed: number; spent: number; total: number }[];
+    byPayer: { payer: string; total: number }[];
+    usesTotal: number; secured: number; pipeline: number; unfunded: number; recordedGap: number;
+  };
+  billing: { budget: number; invoiced: number; paid: number; outstanding: number; overdue: number; wip: number };
+  perms: { canEdit: boolean; editReason?: string; viaGrant: boolean };
+}
+
+export interface AccessRequestRow extends AccessGrant {
+  state: string; project_code?: string; grantee_name?: string; grantee_persona?: string; requested_by_name?: string;
+  l1_name?: string; l2_name?: string; revoked_by_name?: string; label: string; risk_note?: string; clean_team?: boolean;
+  can: { approveL1: boolean; approveL2: boolean; reject: boolean; cancel: boolean; revoke: boolean };
+  why?: string;
+}

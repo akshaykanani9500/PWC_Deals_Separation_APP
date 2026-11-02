@@ -20,6 +20,9 @@ async function main() {
     await db.reload();
     console.log('[db] Demo data loaded.');
   }
+  // Upgrading from v1.2: the finance workspace and access-governance tables start empty -> add the demo rows once.
+  const { ensureFinanceDemo } = await import('./services/finance');
+  if (await ensureFinanceDemo(db)) console.log('[db] Added demo finance (costs, funding, invoices) and access requests for the v1.3 screens.');
   const app = createApp(db);
 
   // Production: serve the built React app (npm run build -> dist/client) with SPA fallback.

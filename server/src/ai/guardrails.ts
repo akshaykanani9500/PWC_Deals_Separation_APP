@@ -180,8 +180,9 @@ export function permissionAnswer(message: string, cap: Capabilities, data: Scope
   const action = detectAction(m);
   // Data requests the role may not see are answered here too (not only "can I" questions).
   if (action === 'finance' && !f.finance && /\b(show|see|view|what|how much|tell|give|list|fees?|budget)\b|बताओ|दिखाओ|कितना/i.test(m)) {
-    return no(`your role (${cap.role}) cannot see fees, budgets, TSA costs or funding gaps, so I can't share them. ${rolesWith('finance.view').join(', ')} can${who ? ` - for this project ask ${who}` : ''}.`,
-      `आपकी भूमिका (${cap.role}) फीस, बजट, TSA लागत या फंडिंग गैप नहीं देख सकती, इसलिए मैं ये नहीं बता सकता। ${rolesWith('finance.view').join(', ')} देख सकते हैं${who ? ` - इस प्रोजेक्ट के लिए ${who} से पूछें` : ''}।`);
+    const canAsk = project && !/client/i.test(cap.role) && /analyst|lead|manager/i.test(cap.role);
+    return no(`your role (${cap.role}) cannot see fees, budgets, TSA costs or funding gaps, so I can't share them. ${rolesWith('finance.view').join(', ')} can${who ? ` - for this project ask ${who}` : ''}.${canAsk ? ' If you need it for your work, use **Access** on the project page to request time-bound finance access; a Partner or Manager and then Risk & Quality must approve it.' : ''}`,
+      `आपकी भूमिका (${cap.role}) फीस, बजट, TSA लागत या फंडिंग गैप नहीं देख सकती, इसलिए मैं ये नहीं बता सकता। ${rolesWith('finance.view').join(', ')} देख सकते हैं${who ? ` - इस प्रोजेक्ट के लिए ${who} से पूछें` : ''}।${canAsk ? ' काम के लिए ज़रूरी हो तो प्रोजेक्ट पेज पर **Access** से सीमित समय की फाइनेंस एक्सेस माँगें; पहले पार्टनर या मैनेजर और फिर Risk & Quality इसे मंज़ूर करेंगे।' : ''}`);
   }
   if (action === 'contacts' && !f.contactsVisible && /\b(phone|number|email|contact|call)\b|फ़ोन|फोन|नंबर/i.test(m)) {
     return no(`contact details and phone numbers are not shared in the client view. Please reach your PwC engagement manager${who ? ` (${who})` : ''} through your usual channel.`,

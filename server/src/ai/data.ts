@@ -4,6 +4,7 @@
  */
 import type { Db } from '../db/Db';
 import type { AuthContext } from '../auth-types';
+import { applyProjectGrants } from '../services/grants';
 import type {
   Activity, Communication, Contact, KnowledgeItem, Project, QuickNote, Stage, Task, TsaService, User, PersonaCode,
 } from '../../../shared/types';
@@ -107,6 +108,9 @@ export async function resolveScope(db: Db, auth: AuthContext, ctx: ContextInput,
     const only = await db.get<Project>('projects', [...visible][0]);
     if (only && only.is_deleted !== 'Y') project = only;
   }
+
+  // Approved access grants apply only inside the one project being discussed (never on portfolio-wide answers).
+  await applyProjectGrants(db, auth, project?.project_id ?? null);
 
   if (task) return { scope: { type: 'task', projectIds: [task.project_id], project, stage, activity, task }, visible };
   if (activity) return { scope: { type: 'activity', projectIds: [activity.project_id], project, stage, activity }, visible };

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Db } from '../db/Db';
 import type { AuthContext, AuthedRequest } from '../auth-types';
 import type {
-  Activity, Communication, Contact, FinanceEntry, Project, ProjectDetail, ProjectListItem, ProjectMember, Stage, Task, TsaService,
+  Activity, Communication, Contact, Project, ProjectDetail, ProjectListItem, ProjectMember, Stage, Task,
 } from '../../../shared/types';
 import { DEFAULT_STAGES } from '../../../shared/defaults';
 import { COMM_CHANNELS, DEAL_TYPES, INDUSTRIES, MEMBER_ROLES, PRIORITY, PROJECT_STATUS, RAG, SENSITIVITY, CONSENT_STATUS } from '../../../shared/schema';
@@ -13,6 +13,8 @@ import {
   assertProjectAccess, canEditStage, filterCommunications, sanitizeContact, sanitizeProject, visibleProjectIds,
 } from '../services/access';
 import { audit } from '../services/audit';
+import { activeGrantsFor } from '../services/grants';
+import { permissionLabel } from '../../../shared/access';
 import { isOverdue, rollupProject, today } from '../services/rollup';
 import { assertOpen, byOrder, pickFields, userIndex } from './helpers';
 
@@ -108,7 +110,11 @@ export async function projectDetail(db: Db, auth: AuthContext, projectId: string
       canViewFinance: hasAction(auth, 'finance.view'),
       canAddNotes: hasAction(auth, 'notes.add') && !closed,
       canUseAiSuggest: hasAction(auth, 'ai.suggest'),
+      canEditFinance: hasAction(auth, 'finance.edit') && !closed,
+      canRequestAccess: (auth.baseActions ?? auth.actions).includes('access.request') && !closed,
+      canSponsorAccess: (auth.baseActions ?? auth.actions).includes('access.approve') && !closed,
     },
+    grants: (await activeGrantsFor(db, auth.user.user_id, projectId)).map((g) => ({ grant_id: g.grant_id, permission_code: g.permission_code, label: permissionLabel(g.permission_code), expires_at: g.expires_at })),
   };
 }
 
@@ -215,25 +221,7 @@ export function projectsRouter(db: Db): Router {
     res.json({ ok: true });
   }));
 
-  // ---------- finance ----------
-  r.get('/:id/finance', ah(async (req, res) => {
-    const { auth } = req as AuthedRequest;
-    const project = await assertProjectAccess(db, auth, req.params.id);
-    await ensureAction(db, auth, 'finance.view', { projectId: project.project_id, entity: 'finance' });
-    const entries = (await db.find<FinanceEntry>('finance_entries', (f) => f.project_id === project.project_id)).sort((a, b) => a.period_month.localeCompare(b.period_month));
-    const tsaServices = await db.find<TsaService>('tsa_services', (s) => s.project_id === project.project_id);
-    const sum = (k: keyof FinanceEntry) => entries.reduce((s, e) => s + (Number(e[k]) || 0), 0);
-    const activeTsa = tsaServices.filter((s) => s.status === 'Active' || s.status === 'Exiting' || s.status === 'Extended');
-    res.json({
-      entries, tsaServices,
-      totals: {
-        fee_budget: project.fee_budget ?? 0, fee_billed: project.fee_billed ?? 0, fee_planned_to_date: sum('fee_planned'), fee_actual_to_date: sum('fee_actual'),
-        tsa_cost_to_date: sum('tsa_cost'), one_time_cost_to_date: sum('one_time_cost'), hours_logged: sum('hours_logged'),
-        tsa_monthly_active: activeTsa.reduce((s, x) => s + (Number(x.monthly_fee) || 0), 0), tsa_services_active: activeTsa.length,
-        funding_gap: project.funding_gap ?? 0, one_time_cost_estimate: project.one_time_cost ?? 0,
-      },
-    });
-  }));
+  // ---------- finance: see routes/finance.ts (finance workspace, v1.3) ----------
 
   // ---------- members ----------
   r.get('/:id/members', ah(async (req, res) => {

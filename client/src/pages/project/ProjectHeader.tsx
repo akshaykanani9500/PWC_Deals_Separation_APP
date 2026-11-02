@@ -4,14 +4,14 @@
  */
 import { useState } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, Pencil, Users, Wallet, Archive, ShieldAlert } from 'lucide-react';
+import { ChevronDown, Pencil, Users, Wallet, Archive, ShieldAlert, ShieldCheck, KeyRound, Lock } from 'lucide-react';
 import type { ProjectDetail } from '@shared/types';
 import { useSession } from '../../lib/session';
-import { Avatar, Button, Gate, Pill, ProgressRing, RagDot } from '../../components/ui';
+import { Avatar, Button, ButtonLink, Gate, Pill, ProgressRing, RagDot } from '../../components/ui';
 import { date, money, num } from '../../lib/format';
 import StageTimeline from './StageTimeline';
 
-type PanelName = 'edit' | 'team' | 'finance' | 'closeout' | 'stages';
+type PanelName = 'edit' | 'team' | 'access' | 'closeout' | 'stages';
 const OVERVIEW_KEY = 'dsh.overview.open';
 
 export default function ProjectHeader({ detail, onOpen }: { detail: ProjectDetail; onOpen: (p: PanelName) => void }) {
@@ -51,6 +51,16 @@ export default function ProjectHeader({ detail, onOpen }: { detail: ProjectDetai
             )}
           </div>
           <p className="mt-0.5 truncate text-[13px] text-ink-soft">{[p.client_alias, p.deal_type, p.industry].filter(Boolean).join(' | ')}</p>
+          {!!detail.grants?.length && (
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {detail.grants.map((g) => (
+                <button key={g.grant_id} onClick={() => onOpen('access')} title="Extra access given to you through an approved request"
+                  className="inline-flex items-center gap-1 rounded-md bg-blue-soft px-1.5 py-[2px] text-[12px] font-medium text-blue hover:underline">
+                  <ShieldCheck size={12} /> {g.label} · until {date(g.expires_at)}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -67,17 +77,30 @@ export default function ProjectHeader({ detail, onOpen }: { detail: ProjectDetai
             <Button icon={<Pencil size={14} />} onClick={() => onOpen('edit')} disabled={!perms.canEditProject || closed}>Edit project</Button>
           </Gate>
           <Button icon={<Users size={14} />} onClick={() => onOpen('team')}>Team ({detail.members.length})</Button>
-          {perms.canViewFinance && <Button icon={<Wallet size={14} />} onClick={() => onOpen('finance')}>Finance</Button>}
+          {perms.canViewFinance ? (
+            <ButtonLink to={`/projects/${p.project_id}/finance`} icon={<Wallet size={14} />}>Finance</ButtonLink>
+          ) : perms.canRequestAccess ? (
+            <ButtonLink to={`/projects/${p.project_id}/finance`} icon={<Lock size={14} />} title="Finance is restricted for your role; open it to request access">Finance</ButtonLink>
+          ) : null}
           {perms.canClose && !closed && <Button variant="primary" icon={<Archive size={14} />} onClick={() => onOpen('closeout')}>Close project</Button>}
         </div>
       </div>
 
-      <button onClick={toggle} aria-expanded={overview} aria-controls="project-overview" aria-label={overview ? 'Hide project overview' : 'Show project overview'}
-        className="flex w-full items-center gap-2 border-t border-line px-5 py-2 text-left text-[13px] font-medium text-link hover:bg-link-soft/40">
-        <ChevronDown size={15} className={clsx('transition-transform', !overview && '-rotate-90')} aria-hidden />
-        {overview ? 'Hide project overview' : 'Show project overview'}
-        <span className="font-normal text-ink-muted">Description, scope{finance.length ? ', finance' : ''} and stage timeline</span>
-      </button>
+      <div className="flex items-stretch border-t border-line">
+        <button onClick={toggle} aria-expanded={overview} aria-controls="project-overview" aria-label={overview ? 'Hide project overview' : 'Show project overview'}
+          className="flex min-w-0 flex-1 items-center gap-2 px-5 py-2 text-left text-[13px] font-medium text-link hover:bg-link-soft/40">
+          <ChevronDown size={15} className={clsx('shrink-0 transition-transform', !overview && '-rotate-90')} aria-hidden />
+          {overview ? 'Hide project overview' : 'Show project overview'}
+          <span className="truncate font-normal text-ink-muted">Description, scope{finance.length ? ', finance' : ''} and stage timeline</span>
+        </button>
+        {(perms.canRequestAccess || perms.canSponsorAccess) && (
+          <button onClick={() => onOpen('access')}
+            className="flex shrink-0 items-center gap-1.5 border-l border-line px-4 py-2 text-[13px] font-medium text-ink-soft hover:bg-sunken hover:text-ink"
+            title={perms.canSponsorAccess ? 'Extra access for your team: sponsor, approve and revoke (two-level approval)' : 'Request extra, time-bound access on this project (two-level approval)'}>
+            <KeyRound size={14} aria-hidden /> {perms.canSponsorAccess ? 'Access & approvals' : 'Request access'}
+          </button>
+        )}
+      </div>
       {overview && (
         <div id="project-overview" className="grid gap-5 border-t border-line px-5 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
           <div className="min-w-0">

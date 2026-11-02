@@ -412,6 +412,133 @@ CREATE INDEX ix_chat_messages_project_id ON chat_messages (project_id);
 CREATE INDEX ix_chat_messages_created_by ON chat_messages (created_by);
 CREATE INDEX ix_chat_messages_updated_by ON chat_messages (updated_by);
 
+-- Finance workspace: where the money for one-time separation costs comes from (sources side of sources & uses). Visibility only; the app never arranges financing.
+CREATE TABLE funding_sources (
+  funding_id                   VARCHAR2(40) NOT NULL,
+  project_id                   VARCHAR2(40) NOT NULL,
+  source_type                  VARCHAR2(40) NOT NULL,
+  provider                     VARCHAR2(120),
+  amount                       NUMBER(18,2),
+  status                       VARCHAR2(20) NOT NULL,
+  interest_rate_pct            NUMBER,
+  tenor_months                 NUMBER(10),
+  purpose                      CLOB,
+  expected_date                DATE,
+  owner_user_id                VARCHAR2(40),
+  notes                        CLOB,
+  created_at                   TIMESTAMP NOT NULL,
+  created_by                   VARCHAR2(40),
+  updated_at                   TIMESTAMP,
+  updated_by                   VARCHAR2(40),
+  is_deleted                   CHAR(1) DEFAULT 'N' NOT NULL,
+  CONSTRAINT pk_funding_sources PRIMARY KEY (funding_id),
+  CONSTRAINT ck_funding_sources_source_type CHECK (source_type IN ('Seller contribution (SPA)', 'Buyer balance-sheet cash', 'Bridge loan', 'Term loan', 'Revolving credit facility', 'Vendor / deferred payment', 'Private equity equity', 'Venture / private credit', 'Escrow / holdback release', 'Government incentive')),
+  CONSTRAINT ck_funding_sources_status CHECK (status IN ('Identified', 'In discussion', 'Term sheet', 'Committed', 'Drawn', 'Declined')),
+  CONSTRAINT ck_funding_sources_is_deleted CHECK (is_deleted IN ('Y','N'))
+);
+CREATE INDEX ix_funding_sources_project_id ON funding_sources (project_id);
+CREATE INDEX ix_funding_sources_owner_user_ ON funding_sources (owner_user_id);
+CREATE INDEX ix_funding_sources_created_by ON funding_sources (created_by);
+CREATE INDEX ix_funding_sources_updated_by ON funding_sources (updated_by);
+
+-- Finance workspace: one-time separation cost lines (uses side), by stage, category and who pays.
+CREATE TABLE cost_items (
+  cost_id                      VARCHAR2(40) NOT NULL,
+  project_id                   VARCHAR2(40) NOT NULL,
+  stage_id                     VARCHAR2(40),
+  activity_id                  VARCHAR2(40),
+  category                     VARCHAR2(40) NOT NULL,
+  description                  VARCHAR2(240),
+  amount                       NUMBER(18,2),
+  status                       VARCHAR2(20) NOT NULL,
+  payer                        VARCHAR2(20),
+  vendor                       VARCHAR2(120),
+  created_at                   TIMESTAMP NOT NULL,
+  created_by                   VARCHAR2(40),
+  updated_at                   TIMESTAMP,
+  updated_by                   VARCHAR2(40),
+  is_deleted                   CHAR(1) DEFAULT 'N' NOT NULL,
+  CONSTRAINT pk_cost_items PRIMARY KEY (cost_id),
+  CONSTRAINT ck_cost_items_category CHECK (category IN ('IT infrastructure', 'Applications and licences', 'Data migration', 'Network and sites', 'People and retention', 'Third-party advisors', 'TSA and extensions', 'Contingency')),
+  CONSTRAINT ck_cost_items_status CHECK (status IN ('Planned', 'Committed', 'Spent')),
+  CONSTRAINT ck_cost_items_payer CHECK (payer IN ('Seller', 'Buyer', 'Shared')),
+  CONSTRAINT ck_cost_items_is_deleted CHECK (is_deleted IN ('Y','N'))
+);
+CREATE INDEX ix_cost_items_project_id ON cost_items (project_id);
+CREATE INDEX ix_cost_items_stage_id ON cost_items (stage_id);
+CREATE INDEX ix_cost_items_activity_id ON cost_items (activity_id);
+CREATE INDEX ix_cost_items_created_by ON cost_items (created_by);
+CREATE INDEX ix_cost_items_updated_by ON cost_items (updated_by);
+
+-- Finance workspace: PwC fee invoices to the client (who billed what, when, and whether it is paid).
+CREATE TABLE invoices (
+  invoice_id                   VARCHAR2(40) NOT NULL,
+  project_id                   VARCHAR2(40) NOT NULL,
+  invoice_no                   VARCHAR2(40) NOT NULL,
+  period_month                 VARCHAR2(7),
+  stage_id                     VARCHAR2(40),
+  description                  VARCHAR2(240),
+  amount                       NUMBER(18,2),
+  status                       VARCHAR2(20) NOT NULL,
+  issued_date                  DATE,
+  due_date                     DATE,
+  paid_date                    DATE,
+  billed_by_user_id            VARCHAR2(40),
+  billed_to                    VARCHAR2(120),
+  created_at                   TIMESTAMP NOT NULL,
+  created_by                   VARCHAR2(40),
+  updated_at                   TIMESTAMP,
+  updated_by                   VARCHAR2(40),
+  is_deleted                   CHAR(1) DEFAULT 'N' NOT NULL,
+  CONSTRAINT pk_invoices PRIMARY KEY (invoice_id),
+  CONSTRAINT ck_invoices_status CHECK (status IN ('Draft', 'Sent', 'Paid', 'Overdue')),
+  CONSTRAINT ck_invoices_is_deleted CHECK (is_deleted IN ('Y','N'))
+);
+CREATE INDEX ix_invoices_project_id ON invoices (project_id);
+CREATE INDEX ix_invoices_stage_id ON invoices (stage_id);
+CREATE INDEX ix_invoices_billed_by_user_id ON invoices (billed_by_user_id);
+CREATE INDEX ix_invoices_created_by ON invoices (created_by);
+CREATE INDEX ix_invoices_updated_by ON invoices (updated_by);
+
+-- Extra, time-bound permission for one person on one project. Two-level governance: L1 engagement approval, L2 Risk & Quality.
+CREATE TABLE access_grants (
+  grant_id                     VARCHAR2(40) NOT NULL,
+  project_id                   VARCHAR2(40) NOT NULL,
+  grantee_user_id              VARCHAR2(40) NOT NULL,
+  permission_code              VARCHAR2(40) NOT NULL,
+  justification                CLOB NOT NULL,
+  duration_days                NUMBER(10),
+  status                       VARCHAR2(20) NOT NULL,
+  requested_by                 VARCHAR2(40),
+  l1_approver_id               VARCHAR2(40),
+  l1_decided_at                TIMESTAMP,
+  l1_note                      CLOB,
+  l2_approver_id               VARCHAR2(40),
+  l2_decided_at                TIMESTAMP,
+  l2_note                      CLOB,
+  starts_at                    TIMESTAMP,
+  expires_at                   TIMESTAMP,
+  revoked_by                   VARCHAR2(40),
+  revoked_at                   TIMESTAMP,
+  revoke_reason                CLOB,
+  created_at                   TIMESTAMP NOT NULL,
+  created_by                   VARCHAR2(40),
+  updated_at                   TIMESTAMP,
+  updated_by                   VARCHAR2(40),
+  is_deleted                   CHAR(1) DEFAULT 'N' NOT NULL,
+  CONSTRAINT pk_access_grants PRIMARY KEY (grant_id),
+  CONSTRAINT ck_access_grants_status CHECK (status IN ('Pending L1', 'Pending L2', 'Active', 'Rejected', 'Revoked', 'Cancelled')),
+  CONSTRAINT ck_access_grants_is_deleted CHECK (is_deleted IN ('Y','N'))
+);
+CREATE INDEX ix_access_grants_project_id ON access_grants (project_id);
+CREATE INDEX ix_access_grants_grantee_user_ ON access_grants (grantee_user_id);
+CREATE INDEX ix_access_grants_requested_by ON access_grants (requested_by);
+CREATE INDEX ix_access_grants_l1_approver_i ON access_grants (l1_approver_id);
+CREATE INDEX ix_access_grants_l2_approver_i ON access_grants (l2_approver_id);
+CREATE INDEX ix_access_grants_revoked_by ON access_grants (revoked_by);
+CREATE INDEX ix_access_grants_created_by ON access_grants (created_by);
+CREATE INDEX ix_access_grants_updated_by ON access_grants (updated_by);
+
 -- Every create/update/delete, AI suggestion, approval and denied access.
 CREATE TABLE audit_log (
   audit_id                     VARCHAR2(40) NOT NULL,
@@ -490,5 +617,27 @@ ALTER TABLE chat_messages ADD CONSTRAINT fk_chat_messages_user_id FOREIGN KEY (u
 ALTER TABLE chat_messages ADD CONSTRAINT fk_chat_messages_project_id FOREIGN KEY (project_id) REFERENCES projects (project_id);
 ALTER TABLE chat_messages ADD CONSTRAINT fk_chat_messages_created_by FOREIGN KEY (created_by) REFERENCES users (user_id);
 ALTER TABLE chat_messages ADD CONSTRAINT fk_chat_messages_updated_by FOREIGN KEY (updated_by) REFERENCES users (user_id);
+ALTER TABLE funding_sources ADD CONSTRAINT fk_funding_sources_project_id FOREIGN KEY (project_id) REFERENCES projects (project_id);
+ALTER TABLE funding_sources ADD CONSTRAINT fk_funding_sources_owner_user_ FOREIGN KEY (owner_user_id) REFERENCES users (user_id);
+ALTER TABLE funding_sources ADD CONSTRAINT fk_funding_sources_created_by FOREIGN KEY (created_by) REFERENCES users (user_id);
+ALTER TABLE funding_sources ADD CONSTRAINT fk_funding_sources_updated_by FOREIGN KEY (updated_by) REFERENCES users (user_id);
+ALTER TABLE cost_items ADD CONSTRAINT fk_cost_items_project_id FOREIGN KEY (project_id) REFERENCES projects (project_id);
+ALTER TABLE cost_items ADD CONSTRAINT fk_cost_items_stage_id FOREIGN KEY (stage_id) REFERENCES stages (stage_id);
+ALTER TABLE cost_items ADD CONSTRAINT fk_cost_items_activity_id FOREIGN KEY (activity_id) REFERENCES activities (activity_id);
+ALTER TABLE cost_items ADD CONSTRAINT fk_cost_items_created_by FOREIGN KEY (created_by) REFERENCES users (user_id);
+ALTER TABLE cost_items ADD CONSTRAINT fk_cost_items_updated_by FOREIGN KEY (updated_by) REFERENCES users (user_id);
+ALTER TABLE invoices ADD CONSTRAINT fk_invoices_project_id FOREIGN KEY (project_id) REFERENCES projects (project_id);
+ALTER TABLE invoices ADD CONSTRAINT fk_invoices_stage_id FOREIGN KEY (stage_id) REFERENCES stages (stage_id);
+ALTER TABLE invoices ADD CONSTRAINT fk_invoices_billed_by_user_id FOREIGN KEY (billed_by_user_id) REFERENCES users (user_id);
+ALTER TABLE invoices ADD CONSTRAINT fk_invoices_created_by FOREIGN KEY (created_by) REFERENCES users (user_id);
+ALTER TABLE invoices ADD CONSTRAINT fk_invoices_updated_by FOREIGN KEY (updated_by) REFERENCES users (user_id);
+ALTER TABLE access_grants ADD CONSTRAINT fk_access_grants_project_id FOREIGN KEY (project_id) REFERENCES projects (project_id);
+ALTER TABLE access_grants ADD CONSTRAINT fk_access_grants_grantee_user_ FOREIGN KEY (grantee_user_id) REFERENCES users (user_id);
+ALTER TABLE access_grants ADD CONSTRAINT fk_access_grants_requested_by FOREIGN KEY (requested_by) REFERENCES users (user_id);
+ALTER TABLE access_grants ADD CONSTRAINT fk_access_grants_l1_approver_i FOREIGN KEY (l1_approver_id) REFERENCES users (user_id);
+ALTER TABLE access_grants ADD CONSTRAINT fk_access_grants_l2_approver_i FOREIGN KEY (l2_approver_id) REFERENCES users (user_id);
+ALTER TABLE access_grants ADD CONSTRAINT fk_access_grants_revoked_by FOREIGN KEY (revoked_by) REFERENCES users (user_id);
+ALTER TABLE access_grants ADD CONSTRAINT fk_access_grants_created_by FOREIGN KEY (created_by) REFERENCES users (user_id);
+ALTER TABLE access_grants ADD CONSTRAINT fk_access_grants_updated_by FOREIGN KEY (updated_by) REFERENCES users (user_id);
 ALTER TABLE audit_log ADD CONSTRAINT fk_audit_log_actor_user_id FOREIGN KEY (actor_user_id) REFERENCES users (user_id);
 ALTER TABLE audit_log ADD CONSTRAINT fk_audit_log_project_id FOREIGN KEY (project_id) REFERENCES projects (project_id);
