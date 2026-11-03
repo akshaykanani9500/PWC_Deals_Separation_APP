@@ -18,7 +18,7 @@ import type { AuthContext, AuthedRequest } from '../auth-types';
 import type { AccessGrant, AccessRequestRow } from '../../../shared/types';
 import { PERMISSIONS } from '../../../shared/permissions';
 import {
-  APPROVAL_RULES, GRANTABLE, GRANT_DURATIONS, approvalMatrix, durationsFor, grantable, grantState, isEscalated, level1Check, needsLevel2,
+  APPROVAL_RULES, EXPIRE_PENDING_AFTER_DAYS, GRANTABLE, GRANT_DURATIONS, approvalMatrix, durationsFor, grantable, grantState, isEscalated, level1Check, needsLevel2,
   pendingAgeDays, pendingExpiresAt, permissionLabel, policyText,
 } from '../../../shared/access';
 import { ah, HttpError } from '../errors';
@@ -229,7 +229,7 @@ export function accessRouter(db: Db): Router {
     const { g, dir, perms } = await load(auth, req.params.id);
     const state = grantState(g);
     const level = state === 'Pending L1' ? 1 : state === 'Pending L2' ? 2 : 0;
-    if (!level) throw new HttpError(409, state === 'Expired' && g.status !== 'Active' ? 'This request expired after 7 days without a decision. Ask the person to request again if it is still needed.' : `This request is already ${state.toLowerCase()}.`, 'VALIDATION');
+    if (!level) throw new HttpError(409, state === 'Expired' && g.status !== 'Active' ? `This request expired after ${EXPIRE_PENDING_AFTER_DAYS} days without a decision. Ask the person to request again if it is still needed.` : `This request is already ${state.toLowerCase()}.`, 'VALIDATION');
     const allowed = level === 1 ? perms.approveL1 : perms.approveL2;
     if (!allowed) {
       await audit(db, auth, 'access.denied', { type: 'access_grant', id: g.grant_id, projectId: g.project_id, details: { reason: `not a level-${level} approver for this request` } });

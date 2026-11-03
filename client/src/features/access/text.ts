@@ -23,5 +23,8 @@ export const isPending = (g: AccessRequestRow) => g.state === 'Pending L1' || g.
 /** Short status for "Your requests" in the bell. */
 export function updateText(g: AccessRequestRow): string {
   if (g.state === 'Active') return `Live until ${date(g.expires_at)}`;
+  if (g.blocked_reason) return g.status_line ?? g.state;
+  if (g.state === 'Pending L1') return `waiting for level 1${g.escalated ? ' (escalated)' : ''}`;
+  if (g.state === 'Pending L2') return `approved at level 1${g.l1_name ? ` by ${g.l1_name}` : ''}, now with Risk & Quality${g.escalated ? ' (escalated)' : ''}`;
   return g.status_line ?? g.state;
 }

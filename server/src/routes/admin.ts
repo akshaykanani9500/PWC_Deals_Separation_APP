@@ -69,15 +69,20 @@ export function adminRouter(db: Db): Router {
    */
   r.post('/db/reset', ah(async (req, res) => {
     const { auth } = req as AuthedRequest;
-    if ((req.body ?? {}).confirm !== 'RESET') throw new HttpError(400, 'Type RESET to confirm. This replaces every table with the demo data.', 'VALIDATION');
+    if ((req.body ?? {}).confirm !== 'RESET') throw new HttpError(400, 'Type RESET to confirm. This replaces every table except the audit log with the demo data.', 'VALIDATION');
     const target = db as Db & { replaceTable?: (t: TableName, rows: any[]) => Promise<void>; markSeeded?: () => Promise<void> };
     if (typeof target.replaceTable !== 'function') throw new HttpError(501, `The ${db.driver} database cannot be reset from the app.`, 'VALIDATION');
     const { buildSeed } = await import('../../../scripts/seed');
     const data = await buildSeed();
+    // The audit trail is never wiped: keep every existing entry and append the demo history after it (re-numbered).
+    const kept = await db.all<AuditEntry>('audit_log', { includeDeleted: true });
+    const maxId = kept.reduce((m, a) => Math.max(m, Number(String(a.audit_id).split('-')[1]) || 0), 0);
+    const seedAudit = (data.audit_log ?? []).map((a: AuditEntry, i: number) => ({ ...a, audit_id: `AUD-${String(maxId + i + 1).padStart(4, '0')}` }));
+    data.audit_log = [...kept, ...seedAudit];
     for (const t of TABLES) await target.replaceTable(t.name as TableName, data[t.name] ?? []);
     await target.markSeeded?.();
     await db.reload();
-    await audit(db, auth, 'admin.db.reset', { details: { driver: db.driver, tables: TABLES.length } });
+    await audit(db, auth, 'admin.db.reset', { details: { driver: db.driver, tables: TABLES.length, auditKept: kept.length } });
     const counts = await db.counts();
     res.json({ ok: true, driver: db.driver, rows: Object.values(counts).reduce((s, n) => s + n, 0) });
   }));

@@ -14,7 +14,7 @@ import { useToast } from '../../components/toast';
 import { Button, Textarea } from '../../components/ui';
 import { ACCESS_CHANGED_EVENT, getLastSeen, isUnseen, setLastSeen, useAccessFeed } from './useAccessSummary';
 import { ApprovalRulesDialog } from './ApprovalRules';
-import { ageText, approverNames, updateText } from './text';
+import { ageText, approverNames, isPending, updateText } from './text';
 
 function WaitingItem({ g, onDone }: { g: AccessRequestRow; onDone: () => void }) {
   const toast = useToast();
@@ -67,7 +67,7 @@ function WaitingItem({ g, onDone }: { g: AccessRequestRow; onDone: () => void })
   );
 }
 
-export default function ApprovalsBell({ userId, canAsk = true }: { userId: string; canAsk?: boolean }) {
+export default function ApprovalsBell({ userId, canAsk = true, canApprove = true }: { userId: string; canAsk?: boolean; canApprove?: boolean }) {
   const { data, reload } = useAccessFeed(true);
   const [open, setOpen] = useState(false);
   const [rules, setRules] = useState(false);
@@ -102,7 +102,8 @@ export default function ApprovalsBell({ userId, canAsk = true }: { userId: strin
     return () => { document.removeEventListener('keydown', onKey); document.removeEventListener('mousedown', onDoc); };
   }, [open, close, rules]);
 
-  const label = `Approvals and access updates: ${waiting.length} waiting for you${unseen.length ? `, ${unseen.length} new update${unseen.length === 1 ? '' : 's'}` : ''}`;
+  const parts = [canApprove ? `${waiting.length} waiting for you` : '', unseen.length ? `${unseen.length} new update${unseen.length === 1 ? '' : 's'}` : canApprove ? '' : 'nothing new'].filter(Boolean);
+  const label = `Approvals and access updates: ${parts.join(', ')}`;
   return (
     <div className="relative">
       <button ref={btn} onClick={() => (open ? close() : (setOpen(true), reload()))} aria-haspopup="dialog" aria-expanded={open} aria-label={label} title="Approvals and access updates"
@@ -114,12 +115,12 @@ export default function ApprovalsBell({ userId, canAsk = true }: { userId: strin
         <div ref={pop} tabIndex={-1} role="dialog" aria-label="Approvals and access updates"
           className="absolute right-0 z-50 mt-1.5 flex max-h-[min(640px,80vh)] w-[min(420px,94vw)] flex-col rounded-xl border border-line bg-surface text-ink shadow-pop outline-none">
           <div className="overflow-y-auto p-3">
-            <section aria-labelledby="bell-wait">
+            {canApprove && <section aria-labelledby="bell-wait" className="mb-4">
               <h3 id="bell-wait" className="mb-2 text-[13px] font-semibold">Waiting for you <span className="num text-ink-muted">({waiting.length})</span></h3>
               {waiting.length ? <ul className="space-y-2">{waiting.map((g) => <WaitingItem key={g.grant_id} g={g} onDone={reload} />)}</ul>
                 : <p className="text-[12.5px] text-ink-muted">Nothing needs your approval.</p>}
-            </section>
-            {(canAsk || updates.length > 0) && <section aria-labelledby="bell-mine" className="mt-4">
+            </section>}
+            {(canAsk || updates.length > 0) && <section aria-labelledby="bell-mine">
               <h3 id="bell-mine" className="mb-2 text-[13px] font-semibold">Your requests</h3>
               {updates.length ? (
                 <ul className="divide-y divide-line rounded-lg border border-line">
@@ -135,8 +136,8 @@ export default function ApprovalsBell({ userId, canAsk = true }: { userId: strin
                         <div className={clsx(g.state === 'Rejected' || g.blocked_reason ? 'text-rose' : g.state === 'Active' ? 'text-green' : g.escalated ? 'text-amber' : 'text-ink-soft')}>
                           {g.state}: {updateText(g)}
                         </div>
-                        {(g.state === 'Pending L1' || g.state === 'Pending L2') && !g.blocked_reason && g.state !== 'Pending L2' && (
-                          <div className="text-ink-muted">Now with {approverNames(g.next_approvers)}</div>
+                        {isPending(g) && !g.blocked_reason && !!g.next_approvers?.length && (
+                          <div className="text-ink-muted">Next approver: {approverNames(g.next_approvers)}</div>
                         )}
                       </li>
                     );

@@ -13,7 +13,7 @@ import {
   assertProjectAccess, canEditStage, filterCommunications, sanitizeContact, sanitizeProject, visibleProjectIds,
 } from '../services/access';
 import { audit } from '../services/audit';
-import { activeGrantsFor } from '../services/grants';
+import { activeGrantsFor, viaGrant } from '../services/grants';
 import { withdrawProjectAccess } from '../services/approvals';
 import { grantable, grantState, permissionLabel } from '../../../shared/access';
 import { isOverdue, rollupProject, today } from '../services/rollup';
@@ -88,6 +88,17 @@ export async function createStageTree(db: Db, actor: string, projectId: string, 
   return out;
 }
 
+/**
+ * v1.4: fields an acting role (role.MANAGER / role.PARTNER grant) may never change: who leads the project and the
+ * clean-team flag (it decides which access needs Risk & Quality). Plan details (description, dates, scope) stay editable.
+ */
+const ACTING_LOCKED_FIELDS = ['partner_user_id', 'manager_user_id', 'clean_team_required'] as const;
+
+async function refuseActing(db: Db, auth: AuthContext, projectId: string, what: string, entity: string): Promise<never> {
+  await audit(db, auth, 'access.denied', { type: entity, projectId, details: { reason: 'acting role cannot change staffing', what } });
+  throw new HttpError(403, `An acting role cannot ${what}. Staffing and the clean-team setting stay with the Engagement Partner and Manager.`, 'FORBIDDEN');
+}
+
 export async function projectDetail(db: Db, auth: AuthContext, projectId: string): Promise<ProjectDetail> {
   const project = await assertProjectAccess(db, auth, projectId);
   const idx = await userIndex(db);
@@ -106,6 +117,7 @@ export async function projectDetail(db: Db, auth: AuthContext, projectId: string
     members: auth.code === 'CLIENT' ? members.filter((m) => m.persona_code !== 'ANALYST') : members,
     perms: {
       canEditProject: hasAction(auth, 'project.edit') && !closed,
+      canChangeStaffing: hasAction(auth, 'project.edit') && !viaGrant(auth, 'project.edit') && !closed,
       canEditStages: hasAction(auth, 'stage.edit') && !closed,
       canClose: hasAction(auth, 'project.close') && !closed,
       canApproveGate: hasAction(auth, 'stage.gate.approve') && !closed,
@@ -114,7 +126,9 @@ export async function projectDetail(db: Db, auth: AuthContext, projectId: string
       canUseAiSuggest: hasAction(auth, 'ai.suggest'),
       canEditFinance: hasAction(auth, 'finance.edit') && !closed,
       canRequestAccess: (auth.baseActions ?? auth.actions).includes('access.request') && !closed,
-      canSponsorAccess: (auth.baseActions ?? auth.actions).includes('access.approve') && !closed,
+      // Sponsoring needs someone staffed or named on the project (the Deals Leader only steps in on escalated requests).
+      canSponsorAccess: (auth.baseActions ?? auth.actions).includes('access.approve') && !closed
+        && (members.some((m) => m.user_id === auth.user.user_id) || project.partner_user_id === auth.user.user_id || project.manager_user_id === auth.user.user_id),
     },
     grants: (await activeGrantsFor(db, auth.user.user_id, projectId)).map((g) => ({ grant_id: g.grant_id, permission_code: g.permission_code, label: permissionLabel(g.permission_code), expires_at: g.expires_at, acting_role: grantable(g.permission_code)?.actingRole ?? null })),
     memberAccess: auth.code === 'CLIENT' ? [] : (await db.find<AccessGrant>('access_grants', (g) => g.project_id === projectId && grantState(g) === 'Active'))
@@ -209,6 +223,12 @@ export function projectsRouter(db: Db): Router {
     const patch: Record<string, unknown> = projectFields.partial().parse(req.body);
     if (!hasAction(auth, 'finance.edit')) for (const f of FIN_FIELDS) delete patch[f];
     if (patch.status === 'Closed') throw new HttpError(400, 'Use the close-out flow to close a project.', 'VALIDATION');
+    // v1.4: an acting role (grant) may edit the plan details, but never staffing or governance fields.
+    if (viaGrant(auth, 'project.edit')) {
+      const blocked = ACTING_LOCKED_FIELDS.filter((f) => f in patch && String(patch[f] ?? '') !== String((project as unknown as Record<string, unknown>)[f] ?? ''));
+      if (blocked.length) await refuseActing(db, auth, project.project_id, `change ${blocked.join(', ')}`, 'project');
+      for (const f of ACTING_LOCKED_FIELDS) delete patch[f];
+    }
     delete patch.rag; // computed
     await db.update('projects', project.project_id, patch, auth.user.user_id);
     await audit(db, auth, 'project.update', { type: 'project', id: project.project_id, projectId: project.project_id, details: patch });
@@ -219,6 +239,7 @@ export function projectsRouter(db: Db): Router {
     const { auth } = req as AuthedRequest;
     const project = await assertProjectAccess(db, auth, req.params.id);
     await ensureAction(db, auth, 'project.edit', { projectId: project.project_id, entity: 'project', id: project.project_id });
+    if (viaGrant(auth, 'project.edit')) await refuseActing(db, auth, project.project_id, 'delete the project', 'project');
     if (!['PARTNER', 'MANAGER'].includes(auth.code)) throw new HttpError(403, 'Only partners and managers can delete projects.', 'FORBIDDEN');
     await db.softDelete('projects', project.project_id, auth.user.user_id);
     await audit(db, auth, 'project.delete', { type: 'project', id: project.project_id, projectId: project.project_id });
@@ -237,6 +258,7 @@ export function projectsRouter(db: Db): Router {
     const { auth } = req as AuthedRequest;
     const project = await assertProjectAccess(db, auth, req.params.id);
     await ensureAction(db, auth, 'project.edit', { projectId: project.project_id, entity: 'member' });
+    if (viaGrant(auth, 'project.edit')) await refuseActing(db, auth, project.project_id, 'add people to the team', 'member');
     assertOpen(project);
     const body = z.object({ user_id: z.string(), member_role: z.enum(MEMBER_ROLES).optional(), workstream: optStr }).parse(req.body);
     const idx = await userIndex(db);
@@ -253,6 +275,7 @@ export function projectsRouter(db: Db): Router {
     const { auth } = req as AuthedRequest;
     const project = await assertProjectAccess(db, auth, req.params.id);
     await ensureAction(db, auth, 'project.edit', { projectId: project.project_id, entity: 'member' });
+    if (viaGrant(auth, 'project.edit')) await refuseActing(db, auth, project.project_id, 'remove people from the team', 'member');
     const m = await db.get<ProjectMember>('project_members', req.params.memberId);
     if (!m || m.project_id !== project.project_id) throw new HttpError(404, 'Member not found.', 'NOT_FOUND');
     await db.softDelete('project_members', m.member_id, auth.user.user_id);

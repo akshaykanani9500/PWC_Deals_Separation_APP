@@ -191,6 +191,14 @@ describe('ageing, no-approver guard', () => {
 });
 
 describe('acting roles', () => {
+  it('the Deals Leader cannot sponsor (not staffed); only escalated requests let them in', async () => {
+    const r = await ask(USERS.exec, { project_id: FALCON, permission_code: 'contacts.view.full', grantee_user_id: USERS.sneha });
+    expect(r.status).toBe(403);
+    expect(r.body.error).toMatch(/not staffed on Project Falcon/);
+    expect((await t.as(USERS.exec).get(`/api/projects/${FALCON}`)).body.perms.canSponsorAccess).toBe(false);
+    expect((await t.as(USERS.rajiv).get(`/api/projects/${FALCON}`)).body.perms.canSponsorAccess).toBe(true);
+  });
+
   it('only a Partner may give level 1 for an acting role', async () => {
     expect((await ask(USERS.daniel, { project_id: RIOJA, permission_code: 'role.LEAD', grantee_user_id: USERS.sneha })).status).toBe(403);
     expect((await ask(USERS.sneha, { project_id: RIOJA, permission_code: 'role.LEAD', duration_days: 90 })).status).toBe(400);
@@ -218,6 +226,26 @@ describe('acting roles', () => {
     const task = t.data.tasks.find((x) => x.project_id === RIOJA && x.stage_id === 'STG-0006' && x.is_deleted !== 'Y')!;
     const up = await sneha.patch(`/api/tasks/${task.task_id}`, { title: `${task.title} (re-planned)` });
     expect(up.status).toBe(200);
+    // staffing and governance fields stay with the real Partner / Manager (and stay put after the grant ends)
+    expect(d.perms.canChangeStaffing).toBe(false);
+    const before = t.data.projects.find((p) => p.project_id === RIOJA)!;
+    for (const body of [{ manager_user_id: USERS.sneha }, { partner_user_id: USERS.sarah }, { clean_team_required: 'N' }]) {
+      const r = await sneha.patch(`/api/projects/${RIOJA}`, body);
+      expect(r.status, JSON.stringify(body)).toBe(403);
+      expect(r.body.error).toMatch(/acting role cannot change/);
+    }
+    const desc = await sneha.patch(`/api/projects/${RIOJA}`, { description: 'Updated by the acting manager.', manager_user_id: before.manager_user_id });
+    expect(desc.status).toBe(200);
+    const after = await t.db.get<any>('projects', RIOJA);
+    expect([after.manager_user_id, after.partner_user_id, after.clean_team_required]).toEqual([before.manager_user_id, before.partner_user_id, 'Y']);
+    expect((await sneha.post(`/api/projects/${RIOJA}/members`, { user_id: USERS.karan })).status).toBe(403);
+    const someone = (await t.db.find<any>('project_members', (m) => m.project_id === RIOJA && m.user_id === USERS.aditya))[0];
+    expect((await sneha.del(`/api/projects/${RIOJA}/members/${someone.member_id}`)).status).toBe(403);
+    expect((await sneha.del(`/api/projects/${RIOJA}`)).status).toBe(403);
+    const denied = (await t.as(USERS.fatima).get(`/api/audit?projectId=${RIOJA}`)).body as any[];
+    expect(denied.filter((a) => a.action === 'access.denied' && /acting role/.test(a.details ?? '')).length).toBeGreaterThanOrEqual(5);
+    // the real manager still can
+    expect((await t.as(USERS.daniel).get(`/api/projects/${RIOJA}`)).body.perms.canChangeStaffing).toBe(true);
     // gate approval stays with the Partner
     expect((await sneha.post('/api/stages/STG-0006/gate', { action: 'approve' })).status).toBe(403);
     // another project: still an analyst
@@ -291,6 +319,7 @@ describe('admin reset demo data', () => {
     expect((await t.as(USERS.rajiv).post('/api/admin/db/reset', { confirm: 'RESET' })).status).toBe(403);
     expect((await t.as(USERS.fatima).post('/api/admin/db/reset', { confirm: 'RESET' })).status).toBe(403);
     expect((await t.as(USERS.rahul).post('/api/admin/db/reset', {})).status).toBe(400);
+    const auditBefore = await t.db.all<any>('audit_log');
     const ok = await t.as(USERS.rahul).post('/api/admin/db/reset', { confirm: 'RESET' });
     expect(ok.status).toBe(200);
     expect(ok.body.ok).toBe(true);
@@ -303,6 +332,13 @@ describe('admin reset demo data', () => {
     // the reset itself is audited (after the reseed)
     const auditRows = (await t.as(USERS.fatima).get('/api/audit')).body as any[];
     expect(auditRows.some((a) => a.action === 'admin.db.reset')).toBe(true);
+    // the audit trail survives a reset: every earlier entry is still there, ids stay unique
+    const auditAfter = await t.db.all<any>('audit_log');
+    const ids = new Set(auditAfter.map((a) => a.audit_id));
+    expect(ids.size).toBe(auditAfter.length);
+    for (const a of auditBefore) expect(ids.has(a.audit_id), a.audit_id).toBe(true);
+    expect(auditAfter.some((a) => a.action === 'member.remove' && a.project_id === FALCON)).toBe(true);
+    expect(auditAfter.length).toBeGreaterThan(auditBefore.length);
     // existing tokens keep working
     expect((await t.as(USERS.rahul).get('/api/admin/db')).status).toBe(200);
   });

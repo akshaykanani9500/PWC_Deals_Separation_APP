@@ -198,3 +198,8 @@ Rules: `shared/access.ts` (`GRANTABLE[].approvals` = `L1` | `L1+L2` | `L1+L2_IF_
 - `DELETE /projects/:id/members/:memberId` now cancels the person's pending requests and revokes their active grants on that project (audited, `auto: true`) and returns `{ ok, withdrawn }`.
 - `GET /projects/:id` adds `memberAccess: { user_id, grant_id, label, acting_role, expires_at }[]` (live extra access of the team; empty for client users) and `grants[].acting_role`.
 - `POST /admin/db/reset` (admin.data) body `{ confirm: 'RESET' }` → wipes every table and reloads `buildSeed()` (same as a fresh start, local or Sheets via `replaceTable`), then audits `admin.db.reset`. Returns `{ ok, driver, rows }`. 400 without the confirm word, 403 for other roles. Tokens stay valid (user ids are stable).
+
+### v1.4 (A fix)
+- Acting roles (role.MANAGER / role.PARTNER grants) may edit plan details (description, dates, scope, status other than Closed) but get **403** (audited as `access.denied`) for changing `partner_user_id`, `manager_user_id` or `clean_team_required`, deleting the project, or adding / removing team members. `GET /projects/:id` adds `perms.canChangeStaffing` (false when `project.edit` comes only from a grant).
+- Sponsoring access needs the sponsor to be staffed or named on the project; the Deals Leader never sponsors and only gives level 1 on escalated requests. `perms.canSponsorAccess` follows the same rule.
+- `POST /admin/db/reset` keeps every existing `audit_log` row and appends the demo history (re-numbered) plus the `admin.db.reset` entry.

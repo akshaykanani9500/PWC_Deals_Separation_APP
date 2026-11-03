@@ -9,7 +9,7 @@ import { Link } from 'react-router-dom';
 import { KeyRound, ShieldCheck, Send, AlertTriangle } from 'lucide-react';
 import type { AccessPreview, AccessRequestRow, PersonaCode, ProjectDetail } from '@shared/types';
 import { PERMISSIONS, type Action } from '@shared/permissions';
-import { GRANTABLE, durationsFor, level1Check, policyText } from '@shared/access';
+import { ESCALATE_AFTER_DAYS, EXPIRE_PENDING_AFTER_DAYS, GRANTABLE, durationsFor, level1Check, policyText } from '@shared/access';
 import { get, post } from '../../lib/api';
 import { useApi } from '../../hooks/useApi';
 import { useSession } from '../../lib/session';
@@ -129,7 +129,7 @@ export default function RequestAccessPanel({ open, onClose, detail, defaultPermi
             <li>You ask for yourself, or a Partner / Manager sponsors it for their team member (a sponsor counts as level 1).</li>
             <li><b>Level 1</b>: a Partner or Manager on this deal who holds the permission and is senior to the person. Finance edits and acting roles need the Partner.</li>
             <li><b>Level 2</b>: Risk &amp; Quality, only for riskier items: finance edits, acting roles, and finance on clean-team deals.</li>
-            <li>Live only on this project, for a limited time, revocable any time. Waiting 3+ days escalates; 7 days without a decision expires.</li>
+            <li>Live only on this project, for a limited time, revocable any time. Waiting {ESCALATE_AFTER_DAYS}+ days escalates; {EXPIRE_PENDING_AFTER_DAYS} days without a decision expires.</li>
           </ol>
         </section>
 

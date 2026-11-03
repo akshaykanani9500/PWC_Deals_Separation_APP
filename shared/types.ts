@@ -173,7 +173,7 @@ export interface ProjectDetail {
   members: (ProjectMember & { full_name: string; persona_code: PersonaCode })[];
   /** What the current user may do on this project */
   perms: {
-    canEditProject: boolean; canEditStages: boolean; canClose: boolean; canApproveGate: boolean;
+    canEditProject: boolean; /** v1.4: false when project.edit comes only from an acting role */ canChangeStaffing?: boolean; canEditStages: boolean; canClose: boolean; canApproveGate: boolean;
     canViewFinance: boolean; canAddNotes: boolean; canUseAiSuggest: boolean;
     /** v1.3 */
     canEditFinance?: boolean; canRequestAccess?: boolean; canSponsorAccess?: boolean;

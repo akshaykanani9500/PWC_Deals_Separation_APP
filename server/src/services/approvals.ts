@@ -7,7 +7,7 @@ import type { Db } from '../db/Db';
 import type { AuthContext } from '../auth-types';
 import type { AccessGrant, Persona, PersonaCode, Project, ProjectMember, User } from '../../../shared/types';
 import { PERMISSIONS } from '../../../shared/permissions';
-import { grantable, grantState, isEscalated, level1Check, level1Who, needsLevel2, permissionLabel, LEVEL2_PERSONAS } from '../../../shared/access';
+import { EXPIRE_PENDING_AFTER_DAYS, escalatesAt, grantable, grantState, isEscalated, level1Check, level1Who, needsLevel2, pendingExpiresAt, permissionLabel, LEVEL2_PERSONAS } from '../../../shared/access';
 import { audit } from './audit';
 
 export interface ApproverRef { user_id: string; name: string; role: string }
@@ -66,7 +66,10 @@ export function qualifiesLevel1(dir: Directory, g: GrantKey, id: string, opts: {
   const code = dir.persona(id);
   const granteeCode = dir.persona(g.grantee_user_id);
   if (!code || !granteeCode || !dir.active(id) || id === g.grantee_user_id) return false;
-  if (code === 'EXEC') { if (!opts.escalated && !opts.sponsor) return false; } else if (!dir.staffed(g.project_id).has(id)) return false;
+  // Level 1 (and sponsoring) needs someone staffed or named on the project. The Deals Leader is the one exception, and only
+  // to unblock an escalated request; a sponsor must always be on the project.
+  const staffed = dir.staffed(g.project_id).has(id);
+  if (!staffed && !(code === 'EXEC' && opts.escalated && !opts.sponsor)) return false;
   return level1Check(code, PERMISSIONS[code].actions, granteeCode, g.permission_code) === null;
 }
 
@@ -124,7 +127,7 @@ export function statusLine(dir: Directory, g: AccessGrant, next: NextStep, now =
     case 'Pending L1': return next.blocked ? `Stuck: ${next.blocked}` : `Waiting for level 1: ${namesList(next.approvers)}${isEscalated(g, now) ? ' (escalated)' : ''}`;
     case 'Pending L2': return next.blocked ? `Approved at level 1${l1 ? ` by ${l1}` : ''}. Stuck: ${next.blocked}` : `Approved at level 1${l1 ? ` by ${l1}` : ''}. Now with Risk & Quality: ${next.approvers.map((a) => a.name).join(' or ')}${isEscalated(g, now) ? ' (escalated)' : ''}`;
     case 'Active': return `Live until ${longDate(g.expires_at)}`;
-    case 'Expired': return g.status === 'Active' ? `Ended on ${longDate(g.expires_at)}` : 'Expired: no decision within 7 days. Ask again if it is still needed.';
+    case 'Expired': return g.status === 'Active' ? `Ended on ${longDate(g.expires_at)}` : `Expired: no decision within ${EXPIRE_PENDING_AFTER_DAYS} days. Ask again if it is still needed.`;
     case 'Rejected': { const by = dir.name(g.l2_decided_at ? g.l2_approver_id : g.l1_approver_id); const note = g.l2_decided_at ? g.l2_note : g.l1_note; return `Rejected${by ? ` by ${by}` : ''}${note ? `: ${note}` : ''}`; }
     case 'Revoked': return `Revoked${dir.name(g.revoked_by) ? ` by ${dir.name(g.revoked_by)}` : ''}${g.revoke_reason ? `: ${g.revoke_reason}` : ''}`;
     case 'Cancelled': return 'Cancelled';
@@ -140,8 +143,8 @@ export function lastEvent(g: AccessGrant, now = Date.now()): { at: string; by: s
   if (g.l2_decided_at) ev.push({ at: g.l2_decided_at, by: g.l2_approver_id ?? null, kind: st === 'Rejected' ? 'rejected' : 'live' });
   if (g.revoked_at) ev.push({ at: g.revoked_at, by: g.revoked_by ?? null, kind: 'revoked' });
   if (st === 'Cancelled' && g.updated_at) ev.push({ at: g.updated_at, by: g.updated_by ?? null, kind: 'cancelled' });
-  if (g.created_at && (st === 'Pending L1' || st === 'Pending L2') && isEscalated(g, now)) ev.push({ at: new Date(Date.parse(g.created_at) + 3 * 864e5).toISOString(), by: null, kind: 'escalated' });
-  if (st === 'Expired') ev.push({ at: g.status === 'Active' ? g.expires_at! : new Date(Date.parse(g.created_at) + 7 * 864e5).toISOString(), by: null, kind: 'expired' });
+  if (g.created_at && (st === 'Pending L1' || st === 'Pending L2') && isEscalated(g, now)) ev.push({ at: escalatesAt(g)!, by: null, kind: 'escalated' });
+  if (st === 'Expired') ev.push({ at: g.status === 'Active' ? g.expires_at! : pendingExpiresAt(g)!, by: null, kind: 'expired' });
   return ev.filter((e) => e.at).sort((a, b) => a.at.localeCompare(b.at)).pop()!;
 }
 

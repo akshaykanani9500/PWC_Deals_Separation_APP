@@ -62,26 +62,26 @@ export default function AppShell() {
     <div className="min-h-screen">
       <a href="#main" className="sr-only z-[80] rounded bg-surface px-3 py-2 focus:not-sr-only focus:fixed focus:left-3 focus:top-3">Skip to main content</a>
       <header className="sticky top-0 z-40 bg-chrome">
-        <div className="mx-auto flex h-12 max-w-[1680px] items-center gap-6 px-5">
+        <div className="mx-auto flex h-12 max-w-[1680px] items-center gap-3 px-5 xl:gap-6">
           <Brand dark compact />
-          <nav className="flex items-center gap-1" aria-label="Main">
+          <nav className="flex min-w-0 items-center gap-0.5 xl:gap-1" aria-label="Main">
             {links.map((l) => (
               <NavLink key={l.to} to={l.to} end={l.end}
-                className={({ isActive }) => clsx('rounded-md px-3 py-1.5 text-[13.5px] font-medium transition-colors',
+                className={({ isActive }) => clsx('whitespace-nowrap rounded-md px-2.5 py-1.5 text-[13.5px] font-medium transition-colors xl:px-3',
                   isActive ? 'bg-chrome-soft text-chrome-text' : 'text-chrome-muted hover:bg-chrome-soft/70 hover:text-chrome-text')}>
                 {l.label}
                 {!!l.badge && <span className="num ml-1.5 rounded-full bg-amber px-1.5 py-[1px] text-[11px] font-semibold text-white" aria-label={`${l.badge} waiting for your approval`}>{l.badge}</span>}
               </NavLink>
             ))}
           </nav>
-          <div className="ml-auto flex items-center gap-3">
-            {accessNav && <ApprovalsBell userId={session.user.user_id} canAsk={can('access.request') || can('access.approve')} />}
+          <div className="ml-auto flex shrink-0 items-center gap-2 xl:gap-3">
+            {accessNav && <ApprovalsBell userId={session.user.user_id} canAsk={can('access.request') || can('access.approve')} canApprove={can('access.approve') || can('access.review')} />}
             <AiStatusButton />
             <div className="relative" ref={menuRef}>
               <button onClick={() => setMenu((m) => !m)} className="flex h-9 items-center gap-2 rounded-md px-2 text-chrome-text hover:bg-chrome-soft"
                 aria-haspopup="menu" aria-expanded={menu} aria-label={`Account menu for ${session.user.full_name}`}>
                 <Avatar name={session.user.full_name} size={28} />
-                <span className="hidden text-left leading-tight md:block">
+                <span className="hidden whitespace-nowrap text-left leading-tight xl:block">
                   <span className="block text-[13px] font-medium">{session.user.full_name}</span>
                   <span className="block text-[11.5px] text-chrome-muted">{session.persona.name}</span>
                 </span>

@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { Inbox, KeyRound, ListChecks, ShieldCheck } from 'lucide-react';
 import type { AccessRequestRow } from '@shared/types';
-import { GRANTABLE, policyText } from '@shared/access';
+import { ESCALATE_AFTER_DAYS, EXPIRE_PENDING_AFTER_DAYS, GRANTABLE, policyText } from '@shared/access';
 import { HowApprovalWorks } from '../features/access/ApprovalRules';
 import { useApi } from '../hooks/useApi';
 import { useSession } from '../lib/session';
@@ -94,7 +94,7 @@ export default function AccessPage() {
               <li>One person, one project, 7 / 30 / 90 days (full contacts and acting roles: 30 days at most).</li>
               <li>Level 1 holds the permission and is senior to the person getting it. A sponsoring Partner / Manager counts as level 1.</li>
               <li>Level 2 (Risk &amp; Quality) only for riskier items: finance edits, acting roles and finance on clean-team deals.</li>
-              <li>Waiting 3+ days: escalated. 7 days without a decision: expired.</li>
+              <li>Waiting {ESCALATE_AFTER_DAYS}+ days: escalated. {EXPIRE_PENDING_AFTER_DAYS} days without a decision: expired.</li>
               <li>Nobody approves their own request. Gate approval, close-out, audit and admin never move between people.</li>
             </ul>
             <div className="mt-2.5"><HowApprovalWorks /></div>

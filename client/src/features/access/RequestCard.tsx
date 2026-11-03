@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom';
 import clsx from 'clsx';
 import { AlertTriangle, Check, CheckCircle2, Circle, Clock3, ShieldCheck, ShieldAlert, UserCog, X, XCircle, Ban } from 'lucide-react';
 import type { AccessRequestRow } from '@shared/types';
+import { ESCALATE_AFTER_DAYS, EXPIRE_PENDING_AFTER_DAYS } from '@shared/access';
 import { post } from '../../lib/api';
 import { useToast } from '../../components/toast';
 import { Button, Pill, Textarea } from '../../components/ui';
@@ -41,7 +42,7 @@ function steps(g: AccessRequestRow): Step[] {
       label: g.state === 'Revoked' ? 'Revoked' : expiredPending ? 'Expired without a decision' : g.state === 'Expired' ? 'Expired' : 'Live',
       who: g.state === 'Revoked' ? g.revoked_by_name : undefined,
       when: g.state === 'Revoked' ? g.revoked_at : expiredPending ? g.pending_expires_at : g.expires_at,
-      note: g.state === 'Revoked' ? g.revoke_reason : g.state === 'Active' ? `Until ${date(g.expires_at)}` : expiredPending ? 'No decision within 7 days.' : null,
+      note: g.state === 'Revoked' ? g.revoke_reason : g.state === 'Active' ? `Until ${date(g.expires_at)}` : expiredPending ? `No decision within ${EXPIRE_PENDING_AFTER_DAYS} days.` : null,
       state: g.state === 'Active' ? 'done' : 'failed',
     });
   }
@@ -122,7 +123,7 @@ export default function RequestCard({ g, onChanged, compact }: { g: AccessReques
       )}
       {isPending(g) && g.pending_expires_at && (
         <p className="mx-4 mt-2 text-[12px] text-ink-muted">
-          {g.escalated ? 'Escalated after 3 days: the Deals Leader can also give level 1 now. ' : ''}Expires on {date(g.pending_expires_at)} if nobody decides.
+          {g.escalated ? `Escalated after ${ESCALATE_AFTER_DAYS} days: the Deals Leader can also give level 1 now. ` : ''}Expires on {date(g.pending_expires_at)} if nobody decides.
         </p>
       )}
 
