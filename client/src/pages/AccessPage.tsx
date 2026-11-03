@@ -1,5 +1,6 @@
 /** Access & approvals: my requests, my approval inbox (level 1 or level 2) and everything I oversee. */
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import clsx from 'clsx';
 import { Inbox, KeyRound, ListChecks, ShieldCheck } from 'lucide-react';
 import type { AccessRequestRow } from '@shared/types';
@@ -16,7 +17,17 @@ type View = 'inbox' | 'mine' | 'all';
 export default function AccessPage() {
   const { session, can } = useSession();
   const approver = can('access.approve') || can('access.review');
-  const [view, setView] = useState<View>(approver ? 'inbox' : 'mine');
+  // The tab lives in the URL (?view=) so a refresh or a shared link keeps it.
+  const [params, setParams] = useSearchParams();
+  const asked = params.get('view') as View | null;
+  const view: View = asked === 'all' || asked === 'mine' || (asked === 'inbox' && approver) ? asked : approver ? 'inbox' : 'mine';
+  const setView = (v: View) => setParams((p) => { const n = new URLSearchParams(p); n.set('view', v); return n; }, { replace: true });
+  const canAsk = can('access.request');
+  const canSponsor = can('access.approve');
+  const emptyBody = view === 'inbox' ? 'New requests that need your approval will appear here.'
+    : canAsk ? 'Open a project and use Request access (under the project header) to ask for extra, time-bound access.'
+    : canSponsor ? 'Open a project you are staffed on and use Access & approvals (under the project header) to give your team extra, time-bound access.'
+    : 'Your role keeps fixed access, so there is nothing to request here. Requests you are allowed to see will appear here.';
   const { data, loading, error, reload } = useApi<AccessRequestRow[]>('/access/requests', []);
   const [q, setQ] = useState('');
   const [state, setState] = useState('');
@@ -83,7 +94,7 @@ export default function AccessPage() {
             <div className="space-y-3">{rows.map((g) => <RequestCard key={g.grant_id} g={g} onChanged={changed} />)}</div>
           ) : (
             <div className="card"><EmptyState icon={<ShieldCheck size={22} />} title={view === 'inbox' ? 'Nothing waiting for you' : 'No requests here'}
-              body={view === 'inbox' ? 'New requests that need your approval will appear here.' : 'Open a project and use Request access (under the project header) to ask for extra, time-bound access.'} /></div>
+              body={emptyBody} /></div>
           )}
         </div>
 

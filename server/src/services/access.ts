@@ -8,7 +8,7 @@ import type { Project, Contact, Communication, Task, Activity, Stage, ProjectMem
 import { CLIENT_HIDDEN_PROJECT_FIELDS, FINANCE_FIELDS, maskContact } from '../../../shared/permissions';
 import { HttpError } from '../errors';
 import { audit } from './audit';
-import { applyProjectGrants, rowCode } from './grants';
+import { applyProjectGrants, rowCode, viaGrant } from './grants';
 
 const has = (auth: AuthContext, a: string) => (auth.actions as string[]).includes(a);
 
@@ -121,6 +121,15 @@ export const ALL_TASK_FIELDS: (keyof Task)[] = [
   'percent_complete', 'day1_critical', 'dependency_notes', 'done_notes', 'pending_notes', 'sort_order',
 ];
 
+/**
+ * v1.4.1: deleting needs the right from the role itself or from an acting role on this project. A single-permission
+ * grant (task.edit / activity.edit for an analyst) lets the person edit and add, but not delete.
+ */
+export function canDeleteVia(auth: AuthContext, action: 'task.edit' | 'activity.edit', projectId: string): boolean {
+  if (!has(auth, action)) return false;
+  return !viaGrant(auth, action) || rowCode(auth, projectId) !== auth.code;
+}
+
 export async function canEditTask(db: Db, auth: AuthContext, task: Task): Promise<{ canEdit: boolean; canDelete: boolean; editableFields: (keyof Task)[] }> {
   const none = { canEdit: false, canDelete: false, editableFields: [] as (keyof Task)[] };
   if (await isProjectClosed(db, task.project_id)) return none;
@@ -131,7 +140,7 @@ export async function canEditTask(db: Db, auth: AuthContext, task: Task): Promis
       const stage = await db.get<Stage>('stages', task.stage_id);
       full = !!stage && (await leadsStage(db, auth, stage));
     }
-    if (full) return { canEdit: true, canDelete: true, editableFields: [...ALL_TASK_FIELDS] };
+    if (full) return { canEdit: true, canDelete: canDeleteVia(auth, 'task.edit', task.project_id), editableFields: [...ALL_TASK_FIELDS] };
   }
   if (has(auth, 'task.edit.own') && task.assignee_user_id === auth.user.user_id) {
     return { canEdit: true, canDelete: false, editableFields: [...OWN_TASK_FIELDS] };

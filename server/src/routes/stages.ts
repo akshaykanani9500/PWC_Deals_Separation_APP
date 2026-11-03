@@ -6,7 +6,7 @@ import type { Activity, Project, Stage, StageDetail, Task } from '../../../share
 import { GATE_STATUS } from '../../../shared/schema';
 import { ah, HttpError } from '../errors';
 import { ensureAction, hasAction } from '../middleware/auth';
-import { canAddActivityToStage, canEditActivity, canEditStage } from '../services/access';
+import { canAddActivityToStage, canDeleteVia, canEditActivity, canEditStage } from '../services/access';
 import { audit } from '../services/audit';
 import { rollupProject } from '../services/rollup';
 import { assertOpen, byOrder, denyRow, loadStage, userIndex } from './helpers';
@@ -28,7 +28,7 @@ export function stagesRouter(db: Db): Router {
     for (const a of acts) {
       const ts = tasks.filter((t) => t.activity_id === a.activity_id);
       const can = await canEditActivity(db, auth, a);
-      activities.push({ ...a, owner_name: idx.name(a.owner_user_id), task_count: ts.length, done_count: ts.filter((t) => t.status === 'Done').length, perms: { canEdit: can, canDelete: can } });
+      activities.push({ ...a, owner_name: idx.name(a.owner_user_id), task_count: ts.length, done_count: ts.filter((t) => t.status === 'Done').length, perms: { canEdit: can, canDelete: can && canDeleteVia(auth, 'activity.edit', a.project_id) } });
     }
     const detail: StageDetail = { stage: { ...stage, owner_name: idx.name(stage.owner_user_id) } as Stage, activities, perms: { canEditActivities: await canAddActivityToStage(db, auth, stage) } };
     res.json(detail);

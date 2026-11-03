@@ -72,11 +72,11 @@ export const GRANTABLE: GrantablePermission[] = [
   },
   {
     code: 'task.edit', label: 'Edit any task in the project', eligible: ['ANALYST'], approvals: 'L1', maxDays: 90,
-    description: 'Change titles, owners, dates and priority of any task, not only tasks assigned to them.',
+    description: 'Add tasks and change titles, owners, dates and priority of any task, not only tasks assigned to them. Deleting tasks stays with the Manager or Workstream Lead.',
   },
   {
     code: 'activity.edit', label: 'Add and edit activities', eligible: ['ANALYST'], approvals: 'L1', maxDays: 90,
-    description: 'Add, rename and plan activities in every stage of this project.',
+    description: 'Add, rename and plan activities in every stage of this project. Deleting activities stays with the Manager or Workstream Lead.',
   },
   acting('LEAD', ['ANALYST'], 'Edit activities and tasks in the stages your workstream owns on this project, like a Workstream Lead.'),
   acting('MANAGER', ['ANALYST', 'LEAD'], 'Run this project day to day like an Engagement Manager: project details, stages, activities, tasks and finance (view). No gate approvals, close-out or access approvals.'),

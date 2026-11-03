@@ -83,6 +83,10 @@ describe('risk-tiered approvals through the API', () => {
     expect(ok.body.notice).toMatch(/live until/);
     const task = t.data.tasks.find((x) => x.project_id === FALCON && x.assignee_user_id !== USERS.sneha && x.is_deleted !== 'Y')!;
     expect((await t.as(USERS.sneha).get(`/api/tasks/${task.task_id}`)).body.perms.canEdit).toBe(true);
+    // v1.4.1: a single task.edit grant edits but never deletes
+    expect((await t.as(USERS.sneha).get(`/api/tasks/${task.task_id}`)).body.perms.canDelete).toBe(false);
+    expect((await t.as(USERS.sneha).del(`/api/tasks/${task.task_id}`)).status).toBe(403);
+    expect((await t.as(USERS.sneha).patch(`/api/tasks/${task.task_id}`, { priority: 'High' })).status).toBe(200);
   });
 
   it('finance.view needs Risk & Quality only on a clean-team project', async () => {
@@ -128,6 +132,13 @@ describe('risk-tiered approvals through the API', () => {
     expect(r.body.state).toBe('Active');
     expect(r.body.l1_approver_id).toBe(USERS.rajiv);
     expect(r.body.notice).toMatch(/^Live now — sponsored by you \(level 1 only\)/);
+    // v1.4.1: the activity.edit grant adds and edits activities but cannot delete them
+    const act = t.data.activities.find((x) => x.project_id === FALCON && x.is_deleted !== 'Y')!;
+    const stage = (await t.as(USERS.sneha).get(`/api/stages/${act.stage_id}`)).body;
+    const row = stage.activities.find((x: any) => x.activity_id === act.activity_id);
+    expect(row.perms).toEqual({ canEdit: true, canDelete: false });
+    expect((await t.as(USERS.sneha).del(`/api/activities/${act.activity_id}`)).status).toBe(403);
+    expect((await t.as(USERS.sneha).patch(`/api/activities/${act.activity_id}`, { name: `${act.name} (re-planned)` })).status).toBe(200);
   });
 });
 
@@ -226,6 +237,7 @@ describe('acting roles', () => {
     const task = t.data.tasks.find((x) => x.project_id === RIOJA && x.stage_id === 'STG-0006' && x.is_deleted !== 'Y')!;
     const up = await sneha.patch(`/api/tasks/${task.task_id}`, { title: `${task.title} (re-planned)` });
     expect(up.status).toBe(200);
+    expect((await sneha.get(`/api/tasks/${task.task_id}`)).body.perms.canDelete).toBe(true); // acting role: like the role itself
     // staffing and governance fields stay with the real Partner / Manager (and stay put after the grant ends)
     expect(d.perms.canChangeStaffing).toBe(false);
     const before = t.data.projects.find((p) => p.project_id === RIOJA)!;

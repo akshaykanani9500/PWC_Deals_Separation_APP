@@ -189,7 +189,7 @@ export function TeamPanel({ open, detail, onClose, onSaved, onGiveAccess }: { op
             <Avatar name={m.full_name} size={28} />
             <div className="min-w-0 flex-1">
               <div className="text-[13px] font-medium">{m.full_name}</div>
-              <div className="text-[11.5px] text-ink-muted">{[m.member_role, PERSONA_LABEL[m.persona_code], m.workstream].filter(Boolean).join(' | ')}</div>
+              <div className="text-[11.5px] text-ink-muted">{[m.member_role, PERSONA_LABEL[m.persona_code], m.workstream].filter((x, i, a) => !!x && a.findIndex((y) => (y ?? '').toLowerCase() === x.toLowerCase()) === i).join(' | ')}</div>
               {chips(m.user_id).length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1" aria-label={`Extra access for ${m.full_name}`}>
                   {chips(m.user_id).map((c) => (

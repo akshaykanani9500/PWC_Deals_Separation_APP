@@ -6,7 +6,7 @@ import type { Activity, ActivityDetail, AuditEntry, Communication, Contact, Quic
 import { PRIORITY, WORK_STATUS } from '../../../shared/schema';
 import { ah, HttpError } from '../errors';
 import { ensureAction, hasAction } from '../middleware/auth';
-import { canAddTaskToActivity, canEditActivity, canEditTask, filterCommunications, sanitizeContact } from '../services/access';
+import { canAddTaskToActivity, canDeleteVia, canEditActivity, canEditTask, filterCommunications, sanitizeContact } from '../services/access';
 import { audit } from '../services/audit';
 import { isOverdue, rollupProject, today } from '../services/rollup';
 import { assertOpen, byOrder, denyRow, loadActivity, loadTask, userIndex } from './helpers';
@@ -92,6 +92,7 @@ export function activitiesRouter(db: Db): Router {
     assertOpen(project);
     await ensureAction(db, auth, 'activity.edit', { projectId: project.project_id, entity: 'activity', id: activity.activity_id });
     if (!(await canEditActivity(db, auth, activity))) await denyRow(db, auth, 'You can only delete activities in stages you lead.', { projectId: project.project_id, entity: 'activity', id: activity.activity_id });
+    if (!canDeleteVia(auth, 'activity.edit', project.project_id)) await denyRow(db, auth, 'Your extra access lets you add and edit activities, not delete them. Ask the Manager or Workstream Lead.', { projectId: project.project_id, entity: 'activity', id: activity.activity_id });
     for (const t of await db.find<Task>('tasks', (x) => x.activity_id === activity.activity_id)) await db.softDelete('tasks', t.task_id, auth.user.user_id);
     await db.softDelete('activities', activity.activity_id, auth.user.user_id);
     await rollupProject(db, project.project_id, auth.user.user_id);

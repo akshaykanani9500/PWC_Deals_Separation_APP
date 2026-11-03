@@ -4,10 +4,16 @@ import { date } from '../../lib/format';
 
 export const approverNames = (xs?: ApproverRef[]) => (xs ?? []).map((a) => `${a.name} (${a.role})`).join(' or ');
 
-/** "Sent today" / "1 day waiting" / "4 days waiting". */
-export function ageText(g: Pick<AccessRequestRow, 'age_days'>): string {
+/** "Sent 20 min ago" / "Sent 20 h ago" / "1 day waiting" / "4 days waiting" (from the real time, not the calendar day). */
+export function ageText(g: Pick<AccessRequestRow, 'age_days' | 'created_at'>, now = Date.now()): string {
+  const ms = g.created_at ? now - Date.parse(g.created_at) : NaN;
+  if (Number.isFinite(ms)) {
+    const h = Math.floor(ms / 3600000);
+    if (h < 1) return `Sent ${Math.max(1, Math.floor(ms / 60000))} min ago`;
+    if (h < 24) return `Sent ${h} h ago`;
+  }
   const d = g.age_days ?? 0;
-  return d <= 0 ? 'Sent today' : d === 1 ? '1 day waiting' : `${d} days waiting`;
+  return d <= 1 ? '1 day waiting' : `${d} days waiting`;
 }
 
 /** Who acts next, in words. */
