@@ -30,7 +30,14 @@ export function dashboardRouter(db: Db): Router {
     const stages = await db.all<Stage>('stages');
     const stageName = new Map(stages.map((s) => [s.stage_id, s.name]));
     const fin = auth.actions.includes('finance.view');
-    const sum = (k: keyof Project) => active.reduce((s, p) => s + (Number(p[k]) || 0), 0);
+    // v1.4: money in different currencies is never added up. The KPI tiles sum the most common currency and say how
+    // many projects in other currencies were left out (the finance pages show each project in its own currency).
+    const curOf = (p: Project) => (p.currency || 'USD').toUpperCase();
+    const curCount = new Map<string, number>();
+    for (const p of active) curCount.set(curOf(p), (curCount.get(curOf(p)) ?? 0) + 1);
+    const financeCurrency = [...curCount.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? 'USD';
+    const sameCur = active.filter((p) => curOf(p) === financeCurrency);
+    const sum = (k: keyof Project) => sameCur.reduce((s, p) => s + (Number(p[k]) || 0), 0);
     const count = <K extends string>(vals: K[]) => {
       const m = new Map<K, number>();
       for (const v of vals) m.set(v, (m.get(v) || 0) + 1);
@@ -105,6 +112,8 @@ export function dashboardRouter(db: Db): Router {
         feeBilled: fin ? sum('fee_billed') : null,
         tsaMonthly: fin ? sum('tsa_monthly_cost') : null,
         fundingGap: fin ? sum('funding_gap') : null,
+        financeCurrency: fin ? financeCurrency : null,
+        financeOtherCurrencyProjects: fin ? active.length - sameCur.length : 0,
       },
       byStatus: count(projects.map((p) => p.status)).map(([status, c]) => ({ status, count: c })),
       byRag: count(active.map((p) => p.rag || 'Green')).map(([rag, c]) => ({ rag, count: c })),

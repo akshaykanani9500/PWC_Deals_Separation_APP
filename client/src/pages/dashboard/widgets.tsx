@@ -54,6 +54,12 @@ function Kpi({ value, label, note, tone, onClick, action }: {
   );
 }
 
+/** Finance KPIs are in one currency; projects in other currencies are left out and named in a note. */
+const cur = (d: DashboardData) => d.kpis.financeCurrency || 'USD';
+const otherCurText = (d: DashboardData) => (d.kpis.financeOtherCurrencyProjects
+  ? `${cur(d)} projects only; ${d.kpis.financeOtherCurrencyProjects} in other currencies not added` : undefined);
+const otherCur = (d: DashboardData) => (otherCurText(d) ? <span className="truncate text-[11.5px] text-amber">{otherCurText(d)}</span> : null);
+
 const tooltipStyle = { fontSize: 12, borderRadius: 8, border: `1px solid ${CHART.line}`, boxShadow: '0 8px 24px rgba(0,0,0,.08)' };
 
 export const WIDGETS: WidgetDef[] = [
@@ -75,15 +81,16 @@ export const WIDGETS: WidgetDef[] = [
       return (
         <div className="flex h-full flex-col justify-between p-4">
           <span className="text-[13px] font-medium text-ink-soft">Fees billed against budget</span>
-          <div className="flex items-baseline gap-2"><span className="num text-[24px] font-medium leading-none">{money(f)}</span><span className="num text-[13px] text-ink-muted">of {money(b)}</span></div>
+          <div className="flex items-baseline gap-2"><span className="num text-[24px] font-medium leading-none">{money(f, cur(d))}</span><span className="num text-[13px] text-ink-muted">of {money(b, cur(d))}</span></div>
+          {otherCur(d)}
           <div className="h-1.5 overflow-hidden rounded-full bg-sunken"><div className="h-full rounded-full bg-brand" style={{ width: `${share}%` }} /></div>
         </div>
       );
     } },
   { id: 'fin-tsa', title: 'TSA run-rate', description: 'Combined monthly TSA cost', w: 4, h: 2, minW: 3, minH: 2, finance: true,
-    render: (d) => <Kpi label="TSA run-rate per month" value={money(d.kpis.tsaMonthly)} note="Every month removed saves this fee for exited services" /> },
+    render: (d) => <Kpi label="TSA run-rate per month" value={money(d.kpis.tsaMonthly, cur(d))} note={otherCurText(d) ?? 'Every month removed saves this fee for exited services'} /> },
   { id: 'fin-gap', title: 'Funding gaps', description: 'Unresolved buyer/seller funding gaps', w: 4, h: 2, minW: 3, minH: 2, finance: true,
-    render: (d) => <Kpi label="Open funding gaps" value={money(d.kpis.fundingGap)} tone={d.kpis.fundingGap ? 'amber' : undefined} note="To split between buyer and seller" /> },
+    render: (d) => <Kpi label="Open funding gaps" value={money(d.kpis.fundingGap, cur(d))} tone={d.kpis.fundingGap ? 'amber' : undefined} note={otherCurText(d) ?? 'To split between buyer and seller'} /> },
   { id: 'chart-status', title: 'Projects by status', description: 'Donut of project status', w: 3, h: 5, minW: 3, minH: 4,
     render: (d) => (
       <ResponsiveContainer width="100%" height="100%">

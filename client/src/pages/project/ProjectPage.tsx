@@ -96,7 +96,7 @@ export default function ProjectPage() {
         </div>
       )}
 
-      <TaskPanel taskId={taskId} projectId={projectId} version={version}
+      <TaskPanel taskId={taskId} projectId={projectId} version={version} projectPerms={data.perms}
         onClose={() => { search.delete('task'); setSearch(search, { replace: true }); }} onChanged={bump} />
 
       <EditProjectPanel open={panel === 'edit'} detail={data} onClose={() => setPanel(null)} onSaved={bump} />

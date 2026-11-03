@@ -31,8 +31,8 @@ export function sizeFor(chart: WidgetSpec['chart']): { w: number; h: number; min
   return { w: 4, h: 5, minW: 3, minH: 3 };
 }
 
-function fmt(d: WidgetData, v: number) {
-  if (d.unit === 'money') return money(v, d.currency);
+function fmt(d: WidgetData, v: number, currency?: string) {
+  if (d.unit === 'money') return money(v, currency ?? d.currency);
   if (d.unit === 'percent') return `${Math.round(v)}%`;
   if (d.unit === 'hours') return `${num(Math.round(v))} h`;
   return num(v);
@@ -45,21 +45,26 @@ export function WidgetView({ data, compact }: { data: WidgetData; compact?: bool
     return (
       <div className="flex h-full flex-col justify-between p-4">
         <span className="truncate text-[13px] font-medium text-ink-soft">{spec.title}</span>
-        <span className="num text-[28px] font-semibold leading-none" data-testid="custom-widget-value">{fmt(data, data.total)}</span>
-        <span className="truncate text-[12px] text-ink-muted">{metricDef(spec.metric)?.description}</span>
+        {data.byCurrency ? (
+          <span className="num flex flex-wrap gap-x-3 text-[18px] font-semibold leading-tight" data-testid="custom-widget-value">
+            {data.byCurrency.map((c) => <span key={c.currency}>{fmt(data, c.total, c.currency)}</span>)}
+          </span>
+        ) : <span className="num text-[28px] font-semibold leading-none" data-testid="custom-widget-value">{fmt(data, data.total)}</span>}
+        <span className="truncate text-[12px] text-ink-muted" title={data.note}>{data.byCurrency ? 'Per currency - not added up' : metricDef(spec.metric)?.description}</span>
       </div>
     );
   }
   if (!rows.length) return <p className="text-[12.5px] text-ink-muted">{data.note ?? 'No data for this widget yet.'}</p>;
-  if (spec.chart === 'table') {
+  if (spec.chart === 'table' || data.byCurrency) {
+    // mixed currencies: a table keeps each amount next to its currency (charts would put them on one axis)
     return (
-      <table className="w-full text-[12.5px]">
+      <>{data.byCurrency && <p className="mb-1 text-[11.5px] text-amber" role="note">{data.note}</p>}<table className="w-full text-[12.5px]">
         <thead><tr className="text-left text-[11.5px] text-ink-muted"><th className="py-1 font-medium">{WIDGET_GROUPS.find((g) => g.id === spec.groupBy)?.label.replace(/ \(.*\)$/, '')}</th><th className="py-1 text-right font-medium">{metricDef(spec.metric)?.label}</th></tr></thead>
         <tbody className="divide-y divide-line">
-          {rows.map((r) => <tr key={r.key}><td className="truncate py-1 pr-2">{r.label}</td><td className="num py-1 text-right font-medium">{fmt(data, r.value)}</td></tr>)}
+          {rows.map((r) => <tr key={r.key}><td className="truncate py-1 pr-2">{r.label}</td><td className="num py-1 text-right font-medium">{fmt(data, r.value, r.currency)}</td></tr>)}
         </tbody>
-        {!compact && <tfoot><tr className="border-t border-line-strong"><td className="py-1 font-medium">Total</td><td className="num py-1 text-right font-semibold">{fmt(data, data.total)}</td></tr></tfoot>}
-      </table>
+        {!compact && !data.byCurrency && <tfoot><tr className="border-t border-line-strong"><td className="py-1 font-medium">Total</td><td className="num py-1 text-right font-semibold">{fmt(data, data.total)}</td></tr></tfoot>}
+      </table></>
     );
   }
   const yTick = (v: number) => (data.unit === 'money' ? money(v, data.currency) : String(v));
@@ -116,7 +121,8 @@ export function WidgetView({ data, compact }: { data: WidgetData; compact?: bool
 
 /** Fetch widget data for a spec (re-fetches when the spec or `version` changes). */
 export function useWidgetData(spec: WidgetSpec | null, version = 0) {
-  const key = spec ? JSON.stringify(spec) : '';
+  // the title does not change the numbers, so typing a title does not refetch
+  const key = spec ? JSON.stringify({ ...spec, title: '' }) : '';
   const [state, setState] = useState<{ data: WidgetData | null; error: string; loading: boolean }>({ data: null, error: '', loading: !!spec });
   useEffect(() => {
     if (!spec || specError(spec)) { setState({ data: null, error: spec ? specError(spec)! : '', loading: false }); return; }
@@ -130,7 +136,9 @@ export function useWidgetData(spec: WidgetSpec | null, version = 0) {
     return () => { live = false; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, version]);
-  return state;
+  // always show the current title on the (title-independent) data
+  const data = state.data && spec ? { ...state.data, spec: { ...state.data.spec, title: spec.title } } : state.data;
+  return { ...state, data };
 }
 
 /** A custom widget inside the dashboard grid. */
@@ -284,7 +292,8 @@ export function WidgetBuilder({ open, initial, onClose, onSave }: { open: boolea
             <div className={clsx('min-h-0 flex-1', spec.chart === 'kpi' ? '' : 'overflow-auto px-4 pb-3 pt-2')}>
               {err ? <p className="p-4 text-[12.5px] text-ink-muted">{err}</p>
                 : preview.error ? <p className="p-4 text-[12.5px] text-rose">{preview.error}</p>
-                  : preview.data ? <WidgetView data={preview.data} compact /> : <div className="flex h-full items-center justify-center"><Loader2 size={16} className="animate-spin text-ink-muted" /></div>}
+                  : preview.data && !preview.loading ? <WidgetView data={preview.data} compact />
+                    : <div className="flex h-full items-center justify-center" aria-live="polite"><Loader2 size={16} className="animate-spin text-ink-muted" /><span className="sr-only">Loading preview</span></div>}
             </div>
           </div>
           {!err && <p className="mt-2 text-[12px] text-ink-muted">{describeSpec(spec)}</p>}

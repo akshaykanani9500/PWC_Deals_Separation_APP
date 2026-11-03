@@ -214,6 +214,8 @@ export interface DashboardData {
     blockedTasks: number; day1CriticalOpen: number;
     /** finance KPIs are null when the persona lacks finance.view */
     feeBudget: number | null; feeBilled: number | null; tsaMonthly: number | null; fundingGap: number | null;
+    /** v1.4: currency of the finance KPIs (the most common one) and how many active projects in other currencies were left out */
+    financeCurrency?: string | null; financeOtherCurrencyProjects?: number;
   };
   byStatus: { status: ProjectStatus; count: number }[];
   byRag: { rag: Rag; count: number }[];
@@ -445,8 +447,12 @@ export interface WidgetData {
   spec: WidgetSpec;
   unit: 'count' | 'money' | 'percent' | 'hours';
   currency?: string;
+  /** 0 when `byCurrency` is set (money in different currencies is never added up) */
   total: number;
-  rows: { key: string; label: string; value: number }[];
+  rows: { key: string; label: string; value: number; currency?: string }[];
+  /** money metrics: currencies in scope; byCurrency only when more than one */
+  currencies?: string[];
+  byCurrency?: { currency: string; total: number }[];
   note?: string;
 }
 export type WidgetSuggestResponse =

@@ -82,8 +82,10 @@ function applyDraft(draft: SuggestResponse['draft'], form: Form, editable: (k: k
   return { next, changed };
 }
 
-export default function TaskPanel({ taskId, projectId, version, onClose, onChanged }: {
+export default function TaskPanel({ taskId, projectId, version, onClose, onChanged, projectPerms }: {
   taskId: string | null; projectId: string; version: number; onClose: () => void; onChanged: () => void;
+  /** Per-project permissions (role + approved grants on this project); falls back to the role when missing. */
+  projectPerms?: { canUseAiSuggest?: boolean; canAddNotes?: boolean };
 }) {
   const toast = useToast();
   const { session, can } = useSession();
@@ -171,7 +173,7 @@ export default function TaskPanel({ taskId, projectId, version, onClose, onChang
                   <div><div className="text-[11.5px] text-ink-muted">Last update</div>{relative(t.updated_at ?? t.created_at)}</div>
                 </div>
                 {readOnlyReason && <p className="rounded-md bg-sunken px-3 py-2 text-[12.5px] text-ink-soft">{readOnlyReason}</p>}
-                {data.perms.canEdit && can('ai.suggest') && (
+                {data.perms.canEdit && (projectPerms?.canUseAiSuggest ?? can('ai.suggest')) && (
                   <div className="rounded-lg border border-dashed border-piku/30 bg-piku-soft/40 px-3 py-2">
                     <p className="mb-2 text-[12.5px] text-ink-soft">Let AI propose updated fields from the latest emails, calls and notes. You review before saving.</p>
                     <AiSuggestButton label="Suggest update" request={{ kind: 'task', projectId, taskId: t.task_id, activityId: t.activity_id, stageId: t.stage_id, current: form }}
@@ -194,7 +196,7 @@ export default function TaskPanel({ taskId, projectId, version, onClose, onChang
 
             {tab === 'notes' && (
               <div className="space-y-3">
-                {can('notes.add') && (
+                {(projectPerms?.canAddNotes ?? can('notes.add')) && (
                   <div>
                     <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a note about this task" aria-label="New note" />
                     <div className="mt-1.5 flex justify-end"><Button size="sm" variant="primary" onClick={addNote} disabled={!note.trim()}>Add note</Button></div>
