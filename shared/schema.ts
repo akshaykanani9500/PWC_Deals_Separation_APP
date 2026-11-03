@@ -69,6 +69,8 @@ export const COST_CATEGORIES = ['IT infrastructure', 'Applications and licences'
 export const COST_STATUS = ['Planned', 'Committed', 'Spent'] as const;
 export const COST_PAYERS = ['Seller', 'Buyer', 'Shared'] as const;
 export const INVOICE_STATUS = ['Draft', 'Sent', 'Paid', 'Overdue'] as const;
+// Bank outreach (v1.4)
+export const FINANCING_REQUEST_STATUS = ['Draft', 'Sent', 'RM replied', 'Term sheet', 'Declined', 'Withdrawn'] as const;
 // Access governance (v1.3)
 export const GRANT_STATUS = ['Pending L1', 'Pending L2', 'Active', 'Rejected', 'Revoked', 'Cancelled'] as const;
 
@@ -151,6 +153,8 @@ export const TABLES: TableDef[] = [
       { name: 'clean_team_required', type: 'bool' },
       { name: 'reuse_consent', type: 'string', length: 20, enumValues: CONSENT_STATUS },
       { name: 'tags', type: 'string', length: 400, description: 'Comma-separated tags' },
+      { name: 'spa_seller_cap', type: 'money', description: 'v1.4: most the seller pays towards separation cost under the sale agreement (SPA)' },
+      { name: 'spa_clause_ref', type: 'string', length: 80, description: 'v1.4: SPA clause that sets the seller cap, e.g. "SPA cl. 7.4"' },
       ...audit,
     ],
   },
@@ -414,6 +418,7 @@ export const TABLES: TableDef[] = [
       { name: 'status', type: 'string', length: 20, required: true, enumValues: COST_STATUS },
       { name: 'payer', type: 'string', length: 20, enumValues: COST_PAYERS },
       { name: 'vendor', type: 'string', length: 120 },
+      { name: 'buyer_usage_pct', type: 'number', description: 'v1.4: buyer share of use (0-100) for Shared lines; drives the usage-based split' },
       ...audit,
     ],
   },
@@ -436,6 +441,31 @@ export const TABLES: TableDef[] = [
       { name: 'paid_date', type: 'date' },
       { name: 'billed_by_user_id', type: 'id', ref: 'users.user_id', description: 'Partner or manager who raised the bill' },
       { name: 'billed_to', type: 'string', length: 120 },
+      ...audit,
+    ],
+  },
+  {
+    name: 'financing_requests',
+    idPrefix: 'FRQ',
+    primaryKey: 'request_id',
+    description: 'v1.4 bank outreach: a request for financing drafted for a demo bank relationship manager, and its tracking. Nothing is sent from the app.',
+    columns: [
+      { name: 'request_id', type: 'id', required: true },
+      { name: 'project_id', type: 'id', required: true, ref: 'projects.project_id' },
+      { name: 'bank_code', type: 'string', length: 20, required: true, description: 'Key into DEMO_BANKS (shared/finance.ts)' },
+      { name: 'rm_name', type: 'string', length: 120, description: 'Relationship manager at the bank (fictional)' },
+      { name: 'product', type: 'string', length: 40, required: true, enumValues: FUNDING_TYPES },
+      { name: 'amount', type: 'money' },
+      { name: 'purpose', type: 'text' },
+      { name: 'status', type: 'string', length: 20, required: true, enumValues: FINANCING_REQUEST_STATUS },
+      { name: 'email_subject', type: 'string', length: 240 },
+      { name: 'email_body', type: 'text' },
+      { name: 'sent_at', type: 'datetime', description: 'When a finance editor marked it as sent (sent outside the app)' },
+      { name: 'last_update_at', type: 'datetime' },
+      { name: 'next_follow_up', type: 'date' },
+      { name: 'notes', type: 'text' },
+      { name: 'owner_user_id', type: 'id', ref: 'users.user_id', description: 'PwC person who drafted / tracks it' },
+      { name: 'funding_id', type: 'id', ref: 'funding_sources.funding_id', description: 'Funding line created when a term sheet arrives' },
       ...audit,
     ],
   },
@@ -492,7 +522,8 @@ export type TableName =
   | 'personas' | 'users' | 'projects' | 'project_members' | 'stages' | 'activities' | 'tasks'
   | 'contacts' | 'communications' | 'quick_notes' | 'finance_entries' | 'tsa_services'
   | 'knowledge_items' | 'chat_messages' | 'audit_log'
-  | 'funding_sources' | 'cost_items' | 'invoices' | 'access_grants';
+  | 'funding_sources' | 'cost_items' | 'invoices' | 'access_grants'
+  | 'financing_requests';
 
 export function getTable(name: string): TableDef {
   const t = TABLES.find((x) => x.name === name);

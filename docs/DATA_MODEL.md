@@ -507,3 +507,14 @@ Every create/update/delete, AI suggestion, approval and denied access.
 | ai_generated | bool |  |  |  |
 | created_at | datetime | yes |  |  |
 
+
+## v1.4 (B) finance changes
+- `projects.spa_seller_cap` (money) and `projects.spa_clause_ref` (string 80): the seller's cap on separation cost under the SPA and its clause.
+  Both are finance fields (`FINANCE_FIELDS` in shared/permissions.ts): hidden without finance.view.
+- `cost_items.buyer_usage_pct` (number 0-100): buyer share of use on Shared / untagged lines; drives the usage-based split (50% when empty).
+- New table `financing_requests` (prefix `FRQ`, after `invoices`): `request_id, project_id, bank_code (DEMO_BANKS key), rm_name, product
+  (FUNDING_TYPES), amount, purpose, status (Draft | Sent | RM replied | Term sheet | Declined | Withdrawn), email_subject, email_body, sent_at,
+  last_update_at, next_follow_up, notes, owner_user_id -> users, funding_id -> funding_sources`, plus audit columns.
+- Seed consistency: cost lines add up exactly to `one_time_cost`; secured funding = `one_time_cost - funding_gap` (never above uses); non-draft
+  invoices add up exactly to `fee_billed`; closed projects have no active TSA services; open projects' active TSA services add up to
+  `tsa_monthly_cost`; monthly `tsa_cost` ends at the current run-rate. Atlas, Falcon and Delta now carry funding gaps (Rioja keeps US$1.74M).

@@ -1,5 +1,5 @@
 /** Finance workspace tabs. All numbers come from GET /api/projects/:id/finance (already permission-checked). */
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
 import { AlertTriangle, CheckCircle2, Info, Pencil, Plus, Landmark } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -12,13 +12,17 @@ import { date, money, num } from '../../lib/format';
 import { PERSONA_LABEL } from '../../hooks/useUsers';
 import { CHART, legendText } from '../dashboard/widgets';
 import type { EditTarget } from './FinancePage';
+import { GapOverviewCard, SetupBanner } from './GapTab';
+import { AskABank } from './BankOutreach';
 
 type W = { w: FinanceWorkspace };
-const cur = (w: FinanceWorkspace) => w.project.currency || 'USD';
+export const cur = (w: FinanceWorkspace) => w.project.currency || 'USD';
+/** "Not set" instead of a misleading $0 when a figure was never entered. */
+const NotSet = () => <span className="text-[16px] font-medium text-ink-muted">Not set</span>;
 const pctOf = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
 const days = (a?: string | null, b?: string | null) => (a && b ? Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / 86400000)) : null);
 
-function Tile({ label, value, sub, tone, onClick }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'amber' | 'rose' | 'green'; onClick?: () => void }) {
+export function Tile({ label, value, sub, tone, onClick }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'amber' | 'rose' | 'green'; onClick?: () => void }) {
   const Comp = onClick ? 'button' : 'div';
   return (
     <Comp onClick={onClick} className={clsx('rounded-xl border border-line bg-surface px-4 py-3 text-left shadow-card', onClick && 'transition-colors hover:border-ink-muted')}>
@@ -29,7 +33,7 @@ function Tile({ label, value, sub, tone, onClick }: { label: string; value: Reac
   );
 }
 
-function Card({ title, right, children, className }: { title: ReactNode; right?: ReactNode; children: ReactNode; className?: string }) {
+export function Card({ title, right, children, className }: { title: ReactNode; right?: ReactNode; children: ReactNode; className?: string }) {
   return (
     <section className={clsx('rounded-xl border border-line bg-surface shadow-card', className)}>
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2.5">
@@ -40,7 +44,7 @@ function Card({ title, right, children, className }: { title: ReactNode; right?:
   );
 }
 
-function Share({ value, max, color = 'bg-blue' }: { value: number; max: number; color?: string }) {
+export function Share({ value, max, color = 'bg-blue' }: { value: number; max: number; color?: string }) {
   const p = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return <span className="block h-1.5 w-full overflow-hidden rounded-full bg-line/70" aria-hidden><span className={clsx('block h-full rounded-full', color)} style={{ width: `${p}%` }} /></span>;
 }
@@ -72,8 +76,9 @@ function FundingMeter({ w }: W) {
 }
 
 // ------------------------------------------------------------------ Overview
-export function OverviewTab({ w, go }: W & { go: (t: any) => void }) {
+export function OverviewTab({ w, go, onSetup }: W & { go: (t: any, extra?: Record<string, string>) => void; onSetup: () => void }) {
   const c = cur(w);
+  const st = w.setup;
   const b = w.billing;
   const su = w.sourcesUses;
   const stageCost = useMemo(() => {
@@ -86,22 +91,26 @@ export function OverviewTab({ w, go }: W & { go: (t: any) => void }) {
     for (const i of w.invoices) if (i.stage_id && i.status !== 'Draft') m.set(i.stage_id, (m.get(i.stage_id) || 0) + (i.amount || 0));
     return m;
   }, [w.invoices]);
-  const maxHours = Math.max(...w.effort.byStage.map((s) => s.hours), 1);
   const chartRows = w.effort.byStage.map((s) => ({ name: s.label, billed: stageBilled.get(s.key) || 0, cost: stageCost.get(s.key) || 0 }));
   const entries = [...w.entries].sort((a, b2) => a.period_month.localeCompare(b2.period_month));
 
   return (
     <div className="space-y-4">
+      {st.isEmpty && <SetupBanner w={w} onSetup={onSetup} />}
+      <GapOverviewCard w={w} go={go} onSetup={onSetup} />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Tile label="Fee budget" value={money(b.budget, c)} sub={`${pctOf(b.invoiced, b.budget)}% invoiced so far`} onClick={() => go('billing')} />
-        <Tile label="Invoiced to the client" value={money(b.invoiced, c)} sub={`${money(b.paid, c)} paid`} onClick={() => go('billing')} />
-        <Tile label="Outstanding" value={money(b.outstanding, c)} tone={b.overdue ? 'rose' : undefined} sub={b.overdue ? `${money(b.overdue, c)} overdue` : 'Nothing overdue'} onClick={() => go('billing')} />
-        <Tile label="Planned effort" value={`${num(w.totals.planned_hours)} h`} sub={`${money(w.totals.effort_value, c)} at standard rates`} onClick={() => go('effort')} />
-        <Tile label="One-time separation cost" value={money(su.usesTotal, c)} sub={`${w.costItems.length} cost lines`} onClick={() => go('funding')} />
-        <Tile label="Funding secured" value={money(su.secured, c)} tone="green" sub={`${pctOf(su.secured, su.usesTotal)}% of the cost`} onClick={() => go('funding')} />
-        <Tile label="Unfunded" value={money(su.unfunded, c)} tone={su.unfunded ? 'amber' : 'green'} sub={su.pipeline ? `${money(su.pipeline, c)} in the pipeline` : 'No options in the pipeline'} onClick={() => go('funding')} />
-        <Tile label="Client TSA run-rate" value={`${money(w.totals.tsa_monthly_active || w.totals.tsa_run_rate, c)}/mo`}
-          sub={w.totals.tsa_services_active ? `${w.totals.tsa_services_active} active TSA services` : 'From the project record; no TSA services itemised'} onClick={() => go('tsa')} />
+        <Tile label="Fee budget" value={st.feeBudgetSet ? money(b.budget, c) : <NotSet />} sub={st.feeBudgetSet ? `${pctOf(b.invoiced, b.budget)}% invoiced so far` : 'No PwC fee budget recorded'} onClick={() => go('billing')} />
+        <Tile label="Invoiced to the client" value={st.hasInvoices ? money(b.invoiced, c) : <NotSet />} sub={st.hasInvoices ? `${money(b.paid, c)} paid` : 'No invoices yet'} onClick={() => go('billing')} />
+        <Tile label="Outstanding" value={st.hasInvoices ? money(b.outstanding, c) : <NotSet />} tone={b.overdue ? 'rose' : undefined} sub={!st.hasInvoices ? 'No invoices yet' : b.overdue ? `${money(b.overdue, c)} overdue` : 'Nothing overdue'} onClick={() => go('billing')} />
+        <Tile label="Planned effort" value={w.totals.planned_hours ? `${num(w.totals.planned_hours)} h` : <NotSet />} sub={w.totals.planned_hours ? `${money(w.totals.effort_value, c)} at standard rates` : 'No task hours planned yet'} onClick={() => go('effort')} />
+        <Tile label={st.hasCostLines ? 'One-time separation cost' : 'One-time cost (estimate)'} value={st.hasCostLines ? money(su.usesTotal, c) : st.oneTimeEstimateSet ? money(w.totals.one_time_cost_estimate, c) : <NotSet />}
+          sub={st.hasCostLines ? `${w.costItems.length} cost lines` : st.oneTimeEstimateSet ? 'From the project record; no cost lines yet' : 'No estimate or cost lines'} onClick={() => go('funding')} />
+        <Tile label="Funding secured" value={st.hasFunding || w.gap.state === 'estimate-only' ? money(w.gap.secured, c) : <NotSet />} tone={st.hasFunding ? 'green' : undefined}
+          sub={w.gap.uses ? `${pctOf(w.gap.secured, w.gap.uses)}% of the cost` : 'No funding lines'} onClick={() => go('funding')} />
+        <Tile label="Unfunded" value={w.gap.state === 'no-data' ? <NotSet /> : money(w.gap.gap, c)} tone={w.gap.state === 'no-data' ? undefined : w.gap.gap ? 'amber' : 'green'}
+          sub={w.gap.state === 'no-data' ? 'Set up finance first' : w.gap.pipeline ? `${money(w.gap.pipeline, c)} in the pipeline (not counted)` : 'No options in the pipeline'} onClick={() => go('gap')} />
+        <Tile label="Client TSA run-rate" value={st.tsaRunRateSet ? `${money(w.totals.tsa_run_rate, c)}/mo` : <NotSet />}
+          sub={w.totals.tsa_services_active ? `${w.totals.tsa_services_active} active TSA services` : st.tsaRunRateSet ? 'From the project record; no TSA services itemised' : 'No TSA recorded'} onClick={() => go('tsa')} />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
@@ -154,7 +163,7 @@ export function OverviewTab({ w, go }: W & { go: (t: any) => void }) {
           <table className="w-full text-[12.5px]">
             <thead><tr>
               <th className="th">Stage</th><th className="th">Dates</th><th className="th text-right">Days</th><th className="th text-right">Tasks</th>
-              <th className="th">Hours (done / plan)</th><th className="th text-right">Effort value</th><th className="th text-right">Invoiced</th><th className="th text-right">Separation cost</th>
+              <th className="th">Hours done / planned</th><th className="th text-right">Effort value</th><th className="th text-right">Invoiced</th><th className="th text-right">Separation cost</th>
             </tr></thead>
             <tbody>
               {w.effort.byStage.map((s) => (
@@ -163,10 +172,10 @@ export function OverviewTab({ w, go }: W & { go: (t: any) => void }) {
                   <td className="td num whitespace-nowrap">{s.start ? `${date(s.start, false)} – ${date(s.end, false)}` : '–'}</td>
                   <td className="td num text-right">{days(s.start, s.end) ?? '–'}</td>
                   <td className="td num text-right">{s.tasks}</td>
-                  <td className="td min-w-[160px]"><div className="num mb-1">{num(s.doneHours)} / {num(s.hours)} h</div><Share value={s.hours} max={maxHours} /></td>
+                  <td className="td min-w-[160px]"><div className="num mb-1">{num(s.doneHours)} / {num(s.hours)} h</div><Share value={s.doneHours} max={s.hours} /></td>
                   <td className="td num text-right">{money(s.value, c)}</td>
-                  <td className="td num text-right">{money(stageBilled.get(s.key) || 0, c)}</td>
-                  <td className="td num text-right">{money(stageCost.get(s.key) || 0, c)}</td>
+                  <td className="td num text-right">{stageBilled.has(s.key) ? money(stageBilled.get(s.key), c) : <span className="text-ink-muted">–</span>}</td>
+                  <td className="td num text-right">{stageCost.has(s.key) ? money(stageCost.get(s.key), c) : <span className="text-ink-muted" title="No cost lines linked to this stage">–</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -274,7 +283,7 @@ export function BillingTab({ w, onEdit, onChanged }: W & { onEdit: (t: EditTarge
         <Tile label="Paid" value={money(b.paid, c)} tone="green" />
         <Tile label="Outstanding" value={money(b.outstanding, c)} />
         <Tile label="Overdue" value={money(b.overdue, c)} tone={b.overdue ? 'rose' : undefined} />
-        <Tile label="Worked, not yet billed" value={money(b.wip, c)} sub="Fees recorded minus invoiced" />
+        <Tile label="Worked, not yet billed" value={money(b.wip, c)} sub={w.project.status === 'Closed' ? 'Project closed: final billing done' : 'Fees recorded minus invoiced'} />
       </div>
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
         <Card title={`Invoices (${rows.length})`} right={(
@@ -330,8 +339,14 @@ export function BillingTab({ w, onEdit, onChanged }: W & { onEdit: (t: EditTarge
 }
 
 // ------------------------------------------------------------------ Costs & funding (sources & uses)
-export function FundingTab({ w, onEdit }: W & { onEdit: (t: EditTarget) => void }) {
+export function FundingTab({ w, onEdit, focusCost }: W & { onEdit: (t: EditTarget) => void; focusCost?: string | null }) {
   const c = cur(w);
+  useEffect(() => {
+    if (!focusCost) return;
+    const el = document.getElementById(`cost-${focusCost}`);
+    el?.scrollIntoView({ block: 'center' });
+    (el?.querySelector('td') as HTMLElement | null)?.focus?.();
+  }, [focusCost]);
   const su = w.sourcesUses;
   const edit = w.perms.canEdit;
   return (
@@ -372,21 +387,22 @@ export function FundingTab({ w, onEdit }: W & { onEdit: (t: EditTarget) => void 
       <Card title={`Cost lines (${w.costItems.length})`} right={edit && <Button size="sm" variant="primary" icon={<Plus size={14} />} onClick={() => onEdit({ kind: 'costs', initial: { status: 'Planned' } })}>Add cost line</Button>}>
         <div className="overflow-x-auto">
           <table className="w-full text-[12.5px]">
-            <thead><tr><th className="th">Category</th><th className="th">Description</th><th className="th">Stage</th><th className="th">Who pays</th><th className="th">Vendor</th><th className="th text-right">Amount</th><th className="th">Status</th>{edit && <th className="th"><span className="sr-only">Edit</span></th>}</tr></thead>
+            <thead><tr><th className="th">Category</th><th className="th">Description</th><th className="th">Stage</th><th className="th">Who pays</th><th className="th text-right">Buyer use</th><th className="th">Vendor</th><th className="th text-right">Amount</th><th className="th">Status</th>{edit && <th className="th"><span className="sr-only">Edit</span></th>}</tr></thead>
             <tbody>
               {w.costItems.map((x) => (
-                <tr key={x.cost_id}>
-                  <td className="td font-medium">{x.category}</td>
+                <tr key={x.cost_id} id={`cost-${x.cost_id}`} className={clsx(focusCost === x.cost_id && 'bg-amber-soft/60 outline outline-2 outline-amber/60')}>
+                  <td className="td font-medium" tabIndex={focusCost === x.cost_id ? -1 : undefined}>{x.category}</td>
                   <td className="td text-ink-soft">{x.description || '–'}</td>
                   <td className="td">{x.stage_name || '–'}</td>
                   <td className="td">{x.payer || <span className="text-amber">Not agreed</span>}</td>
+                  <td className="td num text-right">{x.payer === 'Shared' || !x.payer ? (x.buyer_usage_pct != null ? `${x.buyer_usage_pct}%` : <span className="text-ink-muted" title="Not recorded; 50% is assumed in the split scenarios">50%*</span>) : '–'}</td>
                   <td className="td text-ink-soft">{x.vendor || '–'}</td>
                   <td className="td num text-right font-medium">{money(x.amount, c)}</td>
                   <td className="td"><Pill>{x.status}</Pill></td>
                   {edit && <td className="td text-right"><Button size="sm" variant="ghost" icon={<Pencil size={14} />} aria-label={`Edit ${x.category}`} onClick={() => onEdit({ kind: 'costs', row: x })}>Edit</Button></td>}
                 </tr>
               ))}
-              {!w.costItems.length && <tr><td colSpan={8} className="td text-ink-muted">No cost lines yet.</td></tr>}
+              {!w.costItems.length && <tr><td colSpan={9} className="td text-ink-muted">No cost lines yet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -396,15 +412,17 @@ export function FundingTab({ w, onEdit }: W & { onEdit: (t: EditTarget) => void 
 }
 
 // ------------------------------------------------------------------ Funding options (playbook + demo partners)
-export function OptionsTab({ w, onEdit }: W & { onEdit: (t: EditTarget) => void }) {
+export function OptionsTab({ w, onEdit, onChanged }: W & { onEdit: (t: EditTarget) => void; onChanged: () => void }) {
   const c = cur(w);
   const gap = w.sourcesUses.unfunded;
+  // What still has no source once the options already in the pipeline are counted (not the full gap).
+  const remaining = w.gap.gapAfterPipeline;
   return (
     <div className="space-y-4">
       <div className={clsx('flex items-start gap-2.5 rounded-xl border px-4 py-3 text-[13px]', gap ? 'border-amber/50 bg-amber-soft/50' : 'border-green/40 bg-green-soft/50')}>
         {gap ? <AlertTriangle size={16} className="mt-[1px] shrink-0 text-amber" /> : <CheckCircle2 size={16} className="mt-[1px] shrink-0 text-green" />}
         <div>
-          {gap ? <><b>{money(gap, c)}</b> of the one-time separation cost has no secured funding yet. The routes below are how deal teams usually close the gap.</>
+          {gap ? <><b>{money(gap, c)}</b> of the one-time separation cost has no secured funding yet{w.gap.pipeline ? <>; {money(w.gap.pipeline, c)} is in the pipeline, so <b>{money(remaining, c)}</b> still has no source</> : ''}. The routes below are how deal teams usually close the gap.</>
             : <>The one-time separation cost is fully covered by secured funding.</>}
           <div className="mt-1 text-[12.5px] text-ink-soft">
             For visibility only: the app does not apply for, broker or arrange financing. PwC independence rules mean the firm cannot arrange finance for audit clients;
@@ -412,6 +430,8 @@ export function OptionsTab({ w, onEdit }: W & { onEdit: (t: EditTarget) => void 
           </div>
         </div>
       </div>
+
+      <AskABank w={w} onChanged={onChanged} />
 
       <Card title="Demo funding partners" right={!w.perms.canEdit && <span className="text-[12px] text-ink-muted">Only finance editors can add an option to the plan</span>}>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -423,7 +443,7 @@ export function OptionsTab({ w, onEdit }: W & { onEdit: (t: EditTarget) => void 
               <p className="mt-2 flex-1 text-[12.5px] text-ink-soft">{f.typical}</p>
               {w.perms.canEdit && (
                 <Button size="sm" className="mt-2.5 self-start" icon={<Plus size={14} />}
-                  onClick={() => onEdit({ kind: 'funding', initial: { source_type: f.offers[0], provider: f.name, status: 'Identified', amount: gap ? Math.round(gap / 1000) * 1000 : '', purpose: 'Option to close the funding gap.' } })}>
+                  onClick={() => onEdit({ kind: 'funding', initial: { source_type: f.offers[0], provider: f.name, status: 'Identified', amount: remaining ? Math.round(remaining / 1000) * 1000 : '', purpose: 'Option to close the funding gap.' } })}>
                   Add to funding plan
                 </Button>
               )}

@@ -123,3 +123,26 @@ elsewhere. Keys are never logged, echoed, stored or audited (audit rows record o
 
 Every AI response carries `mode` ("gemini-2.5-flash" etc. or "offline") and is labelled "AI-generated" in the UI.
 Every AI call is written to `audit_log` with `ai_generated='Y'`.
+
+## Finance v1.4 (B) - funding need analysis, finance set-up, bank outreach (`server/src/routes/finance.ts`)
+Services: `services/financeGap.ts` (`analyseGap`, deterministic), `services/financeBank.ts` (drafts, request permissions).
+`GET /projects/:id/finance` now also returns `gap: GapAnalysis`, `setup: FinanceSetupState`, `bankRequests: FinancingRequestRow[]`,
+`banks: BankCard[]` (DEMO_BANKS, fictional) and `bankPerms: { canDraft, canSend, reason? }`. `totals.tsa_run_rate` = active TSA services when
+itemised, else the project field. `billing.wip` is 0 for closed projects.
+
+| Method | Path | Who | Body | Returns |
+|---|---|---|---|---|
+| GET | `/projects/:id/finance/gap` | finance.view | – | `GapAnalysis` (`state`: `no-data` \| `estimate-only` \| `funded` \| `gap`) |
+| POST | `/projects/:id/finance/gap/summary` | finance.view | – | `{ text, mode, figures }`; Gemini when a key is set, rejected unless every amount matches a computed figure; else offline template. Audited `ai.finance_gap_summary` |
+| POST | `/projects/:id/finance/setup` | finance.edit, open | `{ currency?, fee_budget?, one_time_cost?, tsa_monthly_cost?, spa_seller_cap?, spa_clause_ref?, seller_committed?, buyer_committed?, cost_lines?: [{ category, amount, payer?, buyer_usage_pct?, description?, stage_id? }] }` | full workspace. Audited `finance.setup` |
+| POST | `/projects/:id/finance/bank-requests/draft-email` | Partner/Manager + finance.view | `{ bank_code, product, amount, purpose? }` | `{ subject, body, mode, notes[] }` (code name + aggregated figures only; no client name/contacts) |
+| POST | `/projects/:id/finance/bank-requests` | Partner/Manager + finance.view | above + `email_subject?, email_body?, next_follow_up?, notes?` | `FinancingRequestRow` (status `Draft`). Audited `finance.bankreq.create` |
+| PATCH | `/projects/:id/finance/bank-requests/:rid` | Partner/Manager + finance.view | content fields (Draft only, else 409), `next_follow_up`, `notes` | row |
+| POST | `/projects/:id/finance/bank-requests/:rid/status` | see below | `{ status, note?, next_follow_up?, term?: { amount?, interest_rate_pct?, tenor_months?, expected_date? } }` | row. Audited `finance.bankreq.status` |
+
+Status rules: `Sent`, `Term sheet`, `Declined` need finance.edit (403 otherwise); `RM replied` needs draft rights; `Withdrawn` by finance.edit or the
+owner of a Draft. `Sent` stamps `sent_at`, sets a 7-day follow-up and logs a `communications` row (channel Email, no figures). `Term sheet` creates
+(or updates) a `funding_sources` row with status `Term sheet`, provider = bank, and links it in `funding_id`. Declined/Withdrawn mark a linked,
+uncommitted funding line Declined. Nothing is ever sent from the app. Generic cost/funding CRUD and setup keep `projects.funding_gap` equal to the
+computed gap once cost lines exist (`syncFundingGap`). `POST/PATCH /projects` accept `spa_seller_cap`, `spa_clause_ref` (finance fields, stripped
+without finance.view/edit like the others). Cost lines accept `buyer_usage_pct` (0-100).

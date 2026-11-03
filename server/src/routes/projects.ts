@@ -27,6 +27,7 @@ export const projectFields = z.object({
   description: optStr, status: z.enum(PROJECT_STATUS).optional(), rag: z.enum(RAG).optional().nullable(),
   partner_user_id: optStr, manager_user_id: optStr, start_date: optStr, target_close_date: optStr, currency: optStr,
   fee_budget: optNum, fee_billed: optNum, tsa_monthly_cost: optNum, one_time_cost: optNum, funding_gap: optNum,
+  spa_seller_cap: optNum, spa_clause_ref: z.string().max(80).optional().nullable(),
   apps_in_scope: optNum, sites_in_scope: optNum, employees_conveying: optNum, sensitivity: z.enum(SENSITIVITY).optional().nullable(),
   data_residency: optStr, clean_team_required: z.enum(['Y', 'N']).optional().nullable(), reuse_consent: z.enum(CONSENT_STATUS).optional().nullable(),
   tags: optStr, current_stage_id: optStr,
@@ -47,7 +48,7 @@ export const stageTree = z.object({
 export type StageTree = z.infer<typeof stageTree>;
 export type ActivityTree = z.infer<typeof activityTree>;
 
-const FIN_FIELDS = ['fee_budget', 'fee_billed', 'tsa_monthly_cost', 'one_time_cost', 'funding_gap'];
+const FIN_FIELDS = ['fee_budget', 'fee_billed', 'tsa_monthly_cost', 'one_time_cost', 'funding_gap', 'spa_seller_cap', 'spa_clause_ref'];
 
 /** Insert activities (+ tasks) under a stage. */
 export async function createActivityTree(db: Db, actor: string, stage: Stage, acts: ActivityTree[], startOrder = 1): Promise<Activity[]> {

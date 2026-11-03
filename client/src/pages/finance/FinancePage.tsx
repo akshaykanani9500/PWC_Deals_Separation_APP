@@ -1,5 +1,5 @@
 /**
- * Finance workspace (full screen): /projects/:projectId/finance?tab=overview|effort|billing|funding|options|tsa
+ * Finance workspace (full screen): /projects/:projectId/finance?tab=overview|gap|effort|billing|funding|options|tsa (&cost=<cost_id> highlights a line)
  * Who sees it: roles with finance.view, or someone with an approved access grant on THIS project. Editing needs finance.edit.
  * Visibility only - the app never applies for, or arranges, financing.
  */
@@ -16,9 +16,12 @@ import { date } from '../../lib/format';
 import RequestAccessPanel from '../../features/access/RequestAccessPanel';
 import RecordPanel, { type FinanceKind } from './RecordPanel';
 import { OverviewTab, EffortTab, BillingTab, FundingTab, OptionsTab, TsaTab } from './tabs';
+import { GapTab } from './GapTab';
+import SetupPanel from './SetupPanel';
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
+  { id: 'gap', label: 'Gap & split' },
   { id: 'effort', label: 'Time & fees' },
   { id: 'billing', label: 'Billing' },
   { id: 'funding', label: 'Costs & funding' },
@@ -38,7 +41,13 @@ export default function FinancePage() {
   const [edit, setEdit] = useState<EditTarget | null>(null);
   const [accessOpen, setAccessOpen] = useState(false);
   const tab = (TABS.find((t) => t.id === search.get('tab'))?.id ?? 'overview') as TabId;
-  const setTab = (id: TabId) => { search.set('tab', id); setSearch(search, { replace: true }); };
+  const [setupOpen, setSetupOpen] = useState(false);
+  const focusCost = search.get('cost');
+  const setTab = (id: TabId, extra?: Record<string, string>) => {
+    const next = new URLSearchParams({ tab: id, ...(extra ?? {}) });
+    setSearch(next, { replace: true });
+    window.scrollTo({ top: 0 });
+  };
 
   const people = useMemo(() => (detail.data?.members ?? [])
     .filter((m) => ['PARTNER', 'MANAGER', 'LEAD', 'ANALYST', 'EXEC'].includes(m.persona_code))
@@ -106,13 +115,15 @@ export default function FinancePage() {
             ))}
           </div>
           <div id="fin-panel" role="tabpanel" aria-labelledby={`fin-tab-${tab}`}>
-            {tab === 'overview' && <OverviewTab w={w} go={setTab} />}
+            {tab === 'overview' && <OverviewTab w={w} go={setTab} onSetup={() => setSetupOpen(true)} />}
+            {tab === 'gap' && <GapTab w={w} go={setTab} onSetup={() => setSetupOpen(true)} />}
             {tab === 'effort' && <EffortTab w={w} />}
             {tab === 'billing' && <BillingTab w={w} onEdit={setEdit} onChanged={refresh} />}
-            {tab === 'funding' && <FundingTab w={w} onEdit={setEdit} />}
-            {tab === 'options' && <OptionsTab w={w} onEdit={setEdit} />}
+            {tab === 'funding' && <FundingTab w={w} onEdit={setEdit} focusCost={focusCost} />}
+            {tab === 'options' && <OptionsTab w={w} onEdit={setEdit} onChanged={refresh} />}
             {tab === 'tsa' && <TsaTab w={w} />}
           </div>
+          {setupOpen && <SetupPanel w={w} onClose={() => setSetupOpen(false)} onSaved={refresh} />}
           {edit && <RecordPanel open kind={edit.kind} row={edit.row} initial={edit.initial} ws={w} people={people} onClose={() => setEdit(null)} onSaved={refresh} />}
         </>
       )}

@@ -123,4 +123,4 @@ export function maskContact(value: string | null | undefined): string {
 /** Project fields the CLIENT persona must never receive. */
 export const CLIENT_HIDDEN_PROJECT_FIELDS = ['fee_budget', 'fee_billed', 'reuse_consent', 'tags'] as const;
 /** Fields hidden from any persona without finance.view. */
-export const FINANCE_FIELDS = ['fee_budget', 'fee_billed', 'tsa_monthly_cost', 'one_time_cost', 'funding_gap'] as const;
+export const FINANCE_FIELDS = ['fee_budget', 'fee_billed', 'tsa_monthly_cost', 'one_time_cost', 'funding_gap', 'spa_seller_cap', 'spa_clause_ref'] as const;

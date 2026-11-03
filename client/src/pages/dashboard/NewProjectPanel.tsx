@@ -1,7 +1,7 @@
 /** New project side panel with optional AI-suggested plan (stages > activities > tasks). */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles } from 'lucide-react';
+import { ChevronDown, Sparkles } from 'lucide-react';
 import type { ProjectDetail, SuggestResponse } from '@shared/types';
 import { DEAL_TYPES, INDUSTRIES, SENSITIVITY } from '@shared/schema';
 import { DEFAULT_STAGES } from '@shared/defaults';
@@ -18,7 +18,10 @@ const blank = () => ({
   code_name: '', client_alias: '', deal_type: 'Sell-side carve-out', industry: 'Financial Services & Payments', description: '',
   start_date: '', target_close_date: '', partner_user_id: '', manager_user_id: '', sensitivity: 'Confidential',
   data_residency: 'India', clean_team_required: 'N', currency: 'USD',
+  // v1.4 optional finance (sent only for roles with finance.view; the server strips them otherwise)
+  fee_budget: '', one_time_cost: '', tsa_monthly_cost: '', funding_gap: '', spa_seller_cap: '', spa_clause_ref: '',
 });
+const FINANCE_KEYS = ['fee_budget', 'one_time_cost', 'tsa_monthly_cost', 'funding_gap', 'spa_seller_cap', 'spa_clause_ref'] as const;
 
 export default function NewProjectPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const nav = useNavigate();
@@ -29,6 +32,8 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
   const [plan, setPlan] = useState<PlanStage[] | null>(null);
   const [aiMeta, setAiMeta] = useState<{ mode: string; rationale: string; sources: { id: string; label: string }[] } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [finOpen, setFinOpen] = useState(false);
+  const canFinance = !!session?.actions.includes('finance.view');
   const set = (k: keyof ReturnType<typeof blank>, v: string) => setF((s) => ({ ...s, [k]: v }));
 
   useEffect(() => {
@@ -39,7 +44,7 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
       if (session?.persona.code === 'MANAGER') b.manager_user_id = session.user.user_id;
       return b;
     });
-    setPlan(null); setAiMeta(null);
+    setPlan(null); setAiMeta(null); setFinOpen(false);
   }, [open, session]);
 
   const partners = users.filter((u) => u.persona_code === 'PARTNER');
@@ -63,8 +68,9 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
     setSaving(true);
     try {
       const body: Record<string, unknown> = {
-        ...Object.fromEntries(Object.entries(f).filter(([, v]) => v !== '')), status: 'Planning',
+        ...Object.fromEntries(Object.entries(f).filter(([k, v]) => v !== '' && (canFinance || !(FINANCE_KEYS as readonly string[]).includes(k)))), status: 'Planning',
       };
+      for (const k of FINANCE_KEYS) if (k !== 'spa_clause_ref' && body[k] !== undefined) body[k] = Number(body[k]);
       if (plan) { body.stages = stagesPayload(plan); if (aiMeta) body.fromAi = true; }
       const members: { user_id: string; member_role: string }[] = [];
       if (f.partner_user_id) members.push({ user_id: f.partner_user_id, member_role: 'Partner' });
@@ -104,6 +110,29 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
         <Field label="Data residency"><Input value={f.data_residency} onChange={(e) => set('data_residency', e.target.value)} placeholder="India, EU, US" /></Field>
         <div className="col-span-2"><Checkbox checked={f.clean_team_required === 'Y'} onChange={(v) => set('clean_team_required', v ? 'Y' : 'N')} label="Clean team required before close (competitively sensitive data)" /></div>
       </div>
+
+      {canFinance && (
+        <div className="mt-5 rounded-xl border border-line">
+          <button type="button" className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={finOpen} aria-controls="np-finance" onClick={() => setFinOpen((v) => !v)}>
+            <span>
+              <span className="block text-[13.5px] font-semibold">Finance (optional)</span>
+              <span className="block text-[12px] text-ink-muted">Fee budget, one-time cost estimate, TSA run-rate, funding gap and the seller cap from the sale agreement. Visible to finance roles only.</span>
+            </span>
+            <ChevronDown size={16} className={finOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
+          </button>
+          {finOpen && (
+            <div id="np-finance" className="grid grid-cols-2 gap-3 border-t border-line px-4 py-3">
+              <Field label="Currency"><Select value={f.currency} onChange={(e) => set('currency', e.target.value)}>{['USD', 'INR', 'EUR', 'GBP'].map((x) => <option key={x}>{x}</option>)}</Select></Field>
+              <Field label={`PwC fee budget (${f.currency})`}><Input type="number" min={0} value={f.fee_budget} onChange={(e) => set('fee_budget', e.target.value)} /></Field>
+              <Field label={`One-time separation cost estimate (${f.currency})`}><Input type="number" min={0} value={f.one_time_cost} onChange={(e) => set('one_time_cost', e.target.value)} /></Field>
+              <Field label={`Client TSA run-rate per month (${f.currency})`}><Input type="number" min={0} value={f.tsa_monthly_cost} onChange={(e) => set('tsa_monthly_cost', e.target.value)} /></Field>
+              <Field label={`Known funding gap (${f.currency})`}><Input type="number" min={0} value={f.funding_gap} onChange={(e) => set('funding_gap', e.target.value)} /></Field>
+              <Field label={`Seller cap from the SPA (${f.currency})`}><Input type="number" min={0} value={f.spa_seller_cap} onChange={(e) => set('spa_seller_cap', e.target.value)} /></Field>
+              <Field label="SPA clause reference" className="col-span-2"><Input value={f.spa_clause_ref} onChange={(e) => set('spa_clause_ref', e.target.value)} placeholder="e.g. SPA cl. 7.4" /></Field>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mt-6 rounded-xl border border-line">
         <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">

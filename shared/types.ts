@@ -302,3 +302,76 @@ export interface AccessRequestRow extends AccessGrant {
   can: { approveL1: boolean; approveL2: boolean; reject: boolean; cancel: boolean; revoke: boolean };
   why?: string;
 }
+
+// ---- v1.4 B: finance ----
+// Interface merging: these add v1.4 columns / fields to the row and payload types declared above.
+export interface Project { spa_seller_cap?: number | null; spa_clause_ref?: string | null }
+export interface CostItem { buyer_usage_pct?: number | null }
+
+export type FinancingRequestStatus = (typeof import('./schema').FINANCING_REQUEST_STATUS)[number];
+export interface FinancingRequest extends AuditCols {
+  request_id: string; project_id: string; bank_code: string; rm_name?: string | null; product: (typeof FUNDING_TYPES)[number];
+  amount?: number | null; purpose?: string | null; status: FinancingRequestStatus; email_subject?: string | null; email_body?: string | null;
+  sent_at?: string | null; last_update_at?: string | null; next_follow_up?: string | null; notes?: string | null;
+  owner_user_id?: string | null; funding_id?: string | null;
+}
+export interface FinancingRequestRow extends FinancingRequest {
+  bank_name: string; owner_name?: string; funding_status?: string;
+  can: { edit: boolean; markSent: boolean; termSheet: boolean; decline: boolean; withdraw: boolean; reply: boolean };
+}
+export interface BankCard {
+  code: string; name: string; kind: string; products: string[]; terms: string; minTicket: number; maxTicket: number; region: string;
+  rm: { name: string; title: string; email: string; phone: string };
+}
+
+export type GapState = 'no-data' | 'estimate-only' | 'funded' | 'gap';
+export type GapScenarioKey = 'beneficiary' | 'even' | 'usage' | 'avoided';
+/** One line of evidence behind a scenario: a cost line (cost_id set) or a rule (credit, SPA cap). */
+export interface GapEvidence { cost_id?: string; label: string; payer?: string | null; amount: number; rule: string; seller: number; buyer: number }
+export interface GapScenario {
+  key: GapScenarioKey; name: string; basis: string;
+  /** Seller and buyer share of the whole one-time cost (seller + buyer = uses). */
+  sellerShare: number; buyerShare: number;
+  /** Seller share before the SPA cap, and how much the cap moved to the buyer. */
+  sellerBeforeCap: number; capExcess: number;
+  /** How much of the GAP each side must still fund (sellerGap + buyerGap = gap). */
+  sellerGap: number; buyerGap: number;
+  evidence: GapEvidence[]; notes: string[];
+}
+export interface GapRoute { type: string; funder: 'Buyer' | 'Seller'; amount: number; why: string; terms: string; watch: string }
+export interface GapNextStep { text: string; owner: string; role: 'Partner' | 'Manager' }
+export interface GapLesson { title: string; body: string; item_type: string; sources: string[] }
+export interface GapAnalysis {
+  state: GapState; currency: string;
+  uses: number; secured: number; securedSeller: number; securedBuyer: number;
+  pipeline: number; pipelineSeller: number; pipelineBuyer: number;
+  gap: number; gapAfterPipeline: number; recordedGap: number; oneTimeEstimate: number;
+  spa: { cap: number | null; clause: string | null };
+  tsaRunRate: number;
+  mix: { seller: number; buyer: number; shared: number; untagged: number; taggedPct: number; sharedPct: number };
+  scenarios: GapScenario[];
+  recommendation: { key: GapScenarioKey; name: string; reasons: string[] } | null;
+  routes: GapRoute[]; nextSteps: GapNextStep[]; lessons: GapLesson[]; watch: string[]; assumptions: string[];
+  /** Short line used in tiles and the AI summary. */
+  headline: string;
+}
+export interface GapSummary { text: string; mode: string; figures: string[] }
+
+export interface FinanceSetupState {
+  /** true when the project has no cost lines, funding lines or invoices yet */
+  isEmpty: boolean;
+  hasCostLines: boolean; hasFunding: boolean; hasInvoices: boolean;
+  feeBudgetSet: boolean; oneTimeEstimateSet: boolean; tsaRunRateSet: boolean; spaCapSet: boolean;
+  spa_seller_cap: number | null; spa_clause_ref: string | null;
+  missing: string[];
+  /** who can set finance up when the viewer cannot */
+  setupBy: string;
+}
+export interface FinanceWorkspace {
+  gap: GapAnalysis;
+  setup: FinanceSetupState;
+  bankRequests: FinancingRequestRow[];
+  banks: BankCard[];
+  /** Bank outreach: Partners and Managers with finance.view draft; finance.edit marks sent / term sheet / declined. */
+  bankPerms: { canDraft: boolean; canSend: boolean; reason?: string };
+}

@@ -38,7 +38,8 @@ function fieldsFor(kind: FinanceKind, ws: FinanceWorkspace, people: { value: str
     { key: 'status', label: 'Status', type: 'select', options: COST_STATUS, required: true, half: true },
     { key: 'payer', label: 'Who pays', type: 'select', options: ['', ...COST_PAYERS].map((p) => ({ value: p, label: p || 'Not agreed yet' })), half: true },
     { key: 'stage_id', label: 'Stage', type: 'select', options: stages, half: true },
-    { key: 'vendor', label: 'Vendor', type: 'text' },
+    { key: 'buyer_usage_pct', label: 'Buyer use % (shared lines)', type: 'number', half: true, hint: 'Drives the usage-based split; 50% when empty' },
+    { key: 'vendor', label: 'Vendor', type: 'text', half: true },
   ];
   return [
     { key: 'invoice_no', label: 'Invoice number', type: 'text', required: true, half: true },
@@ -55,7 +56,7 @@ function fieldsFor(kind: FinanceKind, ws: FinanceWorkspace, people: { value: str
   ];
 }
 
-const NUMERIC = new Set(['amount', 'interest_rate_pct', 'tenor_months']);
+const NUMERIC = new Set(['amount', 'interest_rate_pct', 'tenor_months', 'buyer_usage_pct']);
 
 export default function RecordPanel({ open, kind, row, initial, ws, people, onClose, onSaved }: {
   open: boolean; kind: FinanceKind; row?: Record<string, any> | null; initial?: Record<string, any>; ws: FinanceWorkspace;

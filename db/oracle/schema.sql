@@ -73,6 +73,8 @@ CREATE TABLE projects (
   clean_team_required          CHAR(1),
   reuse_consent                VARCHAR2(20),
   tags                         VARCHAR2(400),
+  spa_seller_cap               NUMBER(18,2),
+  spa_clause_ref               VARCHAR2(80),
   created_at                   TIMESTAMP NOT NULL,
   created_by                   VARCHAR2(40),
   updated_at                   TIMESTAMP,
@@ -453,6 +455,7 @@ CREATE TABLE cost_items (
   status                       VARCHAR2(20) NOT NULL,
   payer                        VARCHAR2(20),
   vendor                       VARCHAR2(120),
+  buyer_usage_pct              NUMBER,
   created_at                   TIMESTAMP NOT NULL,
   created_by                   VARCHAR2(40),
   updated_at                   TIMESTAMP,
@@ -499,6 +502,40 @@ CREATE INDEX ix_invoices_stage_id ON invoices (stage_id);
 CREATE INDEX ix_invoices_billed_by_user_id ON invoices (billed_by_user_id);
 CREATE INDEX ix_invoices_created_by ON invoices (created_by);
 CREATE INDEX ix_invoices_updated_by ON invoices (updated_by);
+
+-- v1.4 bank outreach: a request for financing drafted for a demo bank relationship manager, and its tracking. Nothing is sent from the app.
+CREATE TABLE financing_requests (
+  request_id                   VARCHAR2(40) NOT NULL,
+  project_id                   VARCHAR2(40) NOT NULL,
+  bank_code                    VARCHAR2(20) NOT NULL,
+  rm_name                      VARCHAR2(120),
+  product                      VARCHAR2(40) NOT NULL,
+  amount                       NUMBER(18,2),
+  purpose                      CLOB,
+  status                       VARCHAR2(20) NOT NULL,
+  email_subject                VARCHAR2(240),
+  email_body                   CLOB,
+  sent_at                      TIMESTAMP,
+  last_update_at               TIMESTAMP,
+  next_follow_up               DATE,
+  notes                        CLOB,
+  owner_user_id                VARCHAR2(40),
+  funding_id                   VARCHAR2(40),
+  created_at                   TIMESTAMP NOT NULL,
+  created_by                   VARCHAR2(40),
+  updated_at                   TIMESTAMP,
+  updated_by                   VARCHAR2(40),
+  is_deleted                   CHAR(1) DEFAULT 'N' NOT NULL,
+  CONSTRAINT pk_financing_requests PRIMARY KEY (request_id),
+  CONSTRAINT ck_financing_requests_product CHECK (product IN ('Seller contribution (SPA)', 'Buyer balance-sheet cash', 'Bridge loan', 'Term loan', 'Revolving credit facility', 'Vendor / deferred payment', 'Private equity equity', 'Venture / private credit', 'Escrow / holdback release', 'Government incentive')),
+  CONSTRAINT ck_financing_requests_status CHECK (status IN ('Draft', 'Sent', 'RM replied', 'Term sheet', 'Declined', 'Withdrawn')),
+  CONSTRAINT ck_financing_requests_is_delet CHECK (is_deleted IN ('Y','N'))
+);
+CREATE INDEX ix_financing_requests_project_ ON financing_requests (project_id);
+CREATE INDEX ix_financing_requests_owner_us ON financing_requests (owner_user_id);
+CREATE INDEX ix_financing_requests_funding_ ON financing_requests (funding_id);
+CREATE INDEX ix_financing_requests_created_ ON financing_requests (created_by);
+CREATE INDEX ix_financing_requests_updated_ ON financing_requests (updated_by);
 
 -- Extra, time-bound permission for one person on one project. Two-level governance: L1 engagement approval, L2 Risk & Quality.
 CREATE TABLE access_grants (
@@ -631,6 +668,11 @@ ALTER TABLE invoices ADD CONSTRAINT fk_invoices_stage_id FOREIGN KEY (stage_id) 
 ALTER TABLE invoices ADD CONSTRAINT fk_invoices_billed_by_user_id FOREIGN KEY (billed_by_user_id) REFERENCES users (user_id);
 ALTER TABLE invoices ADD CONSTRAINT fk_invoices_created_by FOREIGN KEY (created_by) REFERENCES users (user_id);
 ALTER TABLE invoices ADD CONSTRAINT fk_invoices_updated_by FOREIGN KEY (updated_by) REFERENCES users (user_id);
+ALTER TABLE financing_requests ADD CONSTRAINT fk_financing_requests_project_ FOREIGN KEY (project_id) REFERENCES projects (project_id);
+ALTER TABLE financing_requests ADD CONSTRAINT fk_financing_requests_owner_us FOREIGN KEY (owner_user_id) REFERENCES users (user_id);
+ALTER TABLE financing_requests ADD CONSTRAINT fk_financing_requests_funding_ FOREIGN KEY (funding_id) REFERENCES funding_sources (funding_id);
+ALTER TABLE financing_requests ADD CONSTRAINT fk_financing_requests_created_ FOREIGN KEY (created_by) REFERENCES users (user_id);
+ALTER TABLE financing_requests ADD CONSTRAINT fk_financing_requests_updated_ FOREIGN KEY (updated_by) REFERENCES users (user_id);
 ALTER TABLE access_grants ADD CONSTRAINT fk_access_grants_project_id FOREIGN KEY (project_id) REFERENCES projects (project_id);
 ALTER TABLE access_grants ADD CONSTRAINT fk_access_grants_grantee_user_ FOREIGN KEY (grantee_user_id) REFERENCES users (user_id);
 ALTER TABLE access_grants ADD CONSTRAINT fk_access_grants_requested_by FOREIGN KEY (requested_by) REFERENCES users (user_id);
