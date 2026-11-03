@@ -131,6 +131,19 @@ Who can do what: Deals Leader and Managers **see** finance; the Engagement Partn
 
 **Try it:** sign in as **Sneha Pillai** and open Project Rioja → Finance (locked; her request is waiting). Sign in as **Fatima Sheikh** → **Access** → approve. Back as Sneha, finance opens read-only. **Rohan Desai** already has approved finance access on Rioja only.
 
+### What's new in v1.4
+
+- **Approvals that fit the risk.** Editing tasks/activities and full contacts need only level 1 (Partner/Manager on the deal). Finance view adds Risk & Quality only on clean-team deals. Finance edit and **acting roles** (e.g. an Analyst acting as Engagement Manager on one project) need a Partner and then Risk & Quality. Pending requests escalate after 3 days and expire after 7. Removing someone from the team withdraws their extra access.
+- **See who approves next.** A pop-up after every request names the next approver. The **bell icon** in the top bar lists what waits for you, with Approve/Reject right there, plus updates on your own requests. **How approval works** explains the rules.
+- **Finance that helps decide.** Optional finance fields in New project, a **Set up finance** screen, and a **Gap & split** tab: the funding gap, four standard ways to split it between seller and buyer (with the sale-agreement cap), a recommendation with evidence, funding routes, next steps, lessons from past deals and an AI summary.
+- **Ask a bank.** Bank 1-4 (fictional) with relationship managers; AI-drafted email (no client contact data), copy / mail / call, and tracking from Draft to Term sheet. Managers draft, Partners send. Nothing is sent from the app.
+- **AI suggestions use what you typed** and offer 2-3 plans to choose from (e.g. an SAP carve-out with plants in Germany gets ERP, plant and works-council activities).
+- **Meeting, email and call windows** with a demo meeting link, attendees, slots, calendar file, invite email and **Save to project log**.
+- **Build your own dashboard widget**, by hand or by describing it to AI. If it can't be built, you can ask the analytics team.
+- **Reset demo data** (Platform Admin) on the Data admin page; the audit log is kept.
+
+To go back to an earlier version: `git checkout release/v1.3` (or `release/v1.2`).
+
 ---
 
 ## 3. Connect the Google Sheets database

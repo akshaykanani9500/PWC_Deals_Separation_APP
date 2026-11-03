@@ -1,0 +1,25 @@
+[
+ {
+  "request_id": "FRQ-0001",
+  "project_id": "PRJ-0002",
+  "bank_code": "BANK4",
+  "rm_name": "Meenal Kapoor",
+  "product": "Term loan",
+  "amount": 174000,
+  "purpose": "Engineering tool licences and test equipment for Day-1",
+  "status": "Draft",
+  "email_subject": "[Project Rioja] Financing enquiry: term loan of about USD 174K",
+  "email_body": "Dear Meenal,\n\nI am writing on behalf of the deal team for Project Rioja (Semiconductors & High-Tech, day-1 readiness). We are exploring a term loan of about USD 174K to fund one-time IT separation cost.\n\nAggregated need (no client-identifying detail):\n• One-time separation cost: USD 4.1M\n• Already secured: USD 2.36M (58%)\n• Still without a source after options already in discussion: USD 174K\n• Purpose: Engineering tool licences and test equipment for Day-1\n• Indicative tenor: 3-5 years\n\nCould you share indicative terms (pricing, tenor, fees and conditions) and the information you would need for a first credit view? Happy to set up a short call.\n\nDetailed data would only be shared under an NDA and through the clean team, once the client has agreed.\n\nKind regards,\nDaniel Brooks\nEngagement Manager, Deals",
+  "sent_at": null,
+  "last_update_at": "2026-11-01T14:03:52.359Z",
+  "next_follow_up": null,
+  "notes": "Waiting for the independence check before the Partner sends it.",
+  "owner_user_id": "USR-0005",
+  "funding_id": null,
+  "created_at": "2026-11-01T14:03:52.359Z",
+  "created_by": "USR-0005",
+  "updated_at": null,
+  "updated_by": null,
+  "is_deleted": "N"
+ }
+]
