@@ -7,7 +7,7 @@
  */
 import type { Db } from '../db/Db';
 import type { AuthContext } from '../auth-types';
-import type { Communication, CommsContext, CommsLogRequest, CommsPerson, Contact, ProjectMember, User } from '../../../shared/types';
+import type { Communication, CommsContext, CommsLogRequest, CommsPerson, Contact, Persona, ProjectMember, User } from '../../../shared/types';
 import { maskContact } from '../../../shared/permissions';
 import { loadContacts } from './data';
 import { AiHttpError, scopeById, type ScopeKind } from './summary';
@@ -24,18 +24,25 @@ export async function commsContext(db: Db, auth: AuthContext, kind: ScopeKind, i
     const members = await db.find<ProjectMember>('project_members', (m) => m.project_id === project.project_id);
     const ids = new Set([...members.map((m) => m.user_id), project.partner_user_id, project.manager_user_id].filter(Boolean) as string[]);
     const users = new Map((await db.all<User>('users')).map((u) => [u.user_id, u]));
+    const personas = new Map((await db.all<Persona>('personas')).map((p) => [p.persona_id, p.code]));
     for (const uid of ids) {
       const u = users.get(uid);
       if (!u || u.is_active === 'N') continue;
       const m = members.find((x) => x.user_id === uid);
+      // client viewers staffed on the project are client-side people, not the PwC team
+      const isClientUser = personas.get(u.persona_id) === 'CLIENT';
       people.push({
-        id: u.user_id, name: u.full_name, kind: 'team', role: [m?.member_role, m?.workstream].filter(Boolean).join(', ') || undefined, org: 'PwC',
+        id: u.user_id, name: u.full_name, kind: isClientUser ? 'contact' : 'team', side: isClientUser ? 'Client' : 'PwC',
+        role: [m?.member_role, m?.workstream].filter(Boolean).join(', ') || undefined, org: isClientUser ? (u.org || 'Client') : 'PwC',
         email: u.email ? (full ? u.email : maskContact(u.email)) : undefined, phone: u.phone ? (full ? u.phone : maskContact(u.phone)) : undefined,
         emailMasked: !!u.email && !full, phoneMasked: !!u.phone && !full,
       });
     }
     const contacts: Contact[] = await loadContacts(db, auth, scope); // already masked for this role
+    const norm = (s?: string | null) => (s ?? '').trim().toLowerCase();
     for (const c of contacts) {
+      // a contact row for someone already listed (same name or e-mail) is the same person: list them once
+      if (people.some((p) => norm(p.name) === norm(c.full_name) || (!!c.email && !c.email.includes('•') && norm(p.email) === norm(c.email)))) continue;
       people.push({
         id: c.contact_id, name: c.full_name, kind: 'contact', role: c.role_title, org: c.org, side: c.side,
         email: c.email || undefined, phone: c.phone || undefined, emailMasked: !!c.email?.includes('•'), phoneMasked: !!c.phone?.includes('•'),

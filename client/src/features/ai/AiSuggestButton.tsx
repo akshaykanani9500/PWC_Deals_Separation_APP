@@ -4,7 +4,7 @@
  * options as selectable cards (rationale, what came from your inputs, deduplicated sources, preview), and passes
  * the chosen option's draft to `onApply`. The parent form decides how to merge it; nothing is saved until Save.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { Check, Loader2, Sparkles, X, AlertTriangle, Star } from 'lucide-react';
 import type { SuggestOption, SuggestRequest, SuggestResponse } from '@shared/types';
@@ -18,6 +18,9 @@ export interface AiSuggestButtonProps {
   disabled?: boolean;
   /** Toast shown after Apply (false = none). */
   applyToast?: string | false;
+  /** v1.4.1: the option currently selected but NOT applied yet (null once applied or dismissed), so a form can
+   *  avoid silently dropping it on save. */
+  onPendingChange?: (pending: { draft: SuggestResponse['draft']; response: SuggestResponse; label: string } | null) => void;
 }
 
 const fieldLabel = (k: string) => k.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
@@ -82,7 +85,7 @@ function statLine(o: SuggestOption): string {
   return bits.join(' · ');
 }
 
-export default function AiSuggestButton({ request, onApply, label = 'Get AI suggestion', disabled, applyToast = 'Suggestion applied — review and press Save' }: AiSuggestButtonProps) {
+export default function AiSuggestButton({ request, onApply, label = 'Get AI suggestion', disabled, applyToast = 'Suggestion applied — review and press Save', onPendingChange }: AiSuggestButtonProps) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -105,6 +108,11 @@ export default function AiSuggestButton({ request, onApply, label = 'Get AI sugg
   const options: SuggestOption[] = result?.options?.length ? result.options
     : result ? [{ id: 'default', label: 'Suggestion', rationale: result.rationale, draft: result.draft, sources: result.sources, fromInputs: [] }] : [];
   const chosen = options.find((o) => o.id === pick) ?? options[0];
+  useEffect(() => {
+    if (!onPendingChange) return;
+    onPendingChange(result && chosen ? { draft: chosen.draft, response: { ...result, draft: chosen.draft, rationale: chosen.rationale, sources: chosen.sources, recommendedId: chosen.id }, label: chosen.label } : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, chosen?.id]);
 
   const apply = () => {
     if (!result || !chosen) return;
@@ -143,7 +151,7 @@ export default function AiSuggestButton({ request, onApply, label = 'Get AI sugg
                   <span className="flex items-center gap-1 text-[12.5px] font-semibold text-ink">
                     {o.id === chosen.id && <Check size={12} className="text-piku" aria-hidden />}{o.label}
                   </span>
-                  {o.recommended && <span className="mt-0.5 inline-flex items-center gap-0.5 rounded bg-piku-soft px-1 text-[10px] font-medium text-piku"><Star size={9} aria-hidden /> Recommended</span>}
+                  {o.recommended && !/recommended/i.test(o.label) && <span className="mt-0.5 inline-flex items-center gap-0.5 rounded bg-piku-soft px-1 text-[10px] font-medium text-piku"><Star size={9} aria-hidden /> Recommended</span>}
                   {statLine(o) && <span className="mt-0.5 block text-[11px] text-ink-muted">{statLine(o)}</span>}
                 </button>
               ))}

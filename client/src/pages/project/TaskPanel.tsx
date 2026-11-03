@@ -6,6 +6,7 @@ import type { Activity, SuggestResponse, Task, TaskDetail } from '@shared/types'
 import { WORK_STATUS, PRIORITY } from '@shared/schema';
 import { useApi } from '../../hooks/useApi';
 import { useUsers } from '../../hooks/useUsers';
+import { useTeam, withCurrent } from '../../hooks/useTeam';
 import { useSession } from '../../lib/session';
 import { patch, post, del } from '../../lib/api';
 import { SidePanel, ConfirmDialog } from '../../components/SidePanel';
@@ -29,7 +30,7 @@ function toForm(t: Task): Form {
 
 function TaskFields({ form, set, editable, users, aiChanged }: {
   form: Form; set: (k: keyof Task, v: string) => void; editable: (k: keyof Task) => boolean;
-  users: { user_id: string; full_name: string }[]; aiChanged?: Set<string>;
+  users: { user_id: string; full_name: string; offTeam?: boolean }[]; aiChanged?: Set<string>;
 }) {
   const mark = (k: keyof Task) => clsx(aiChanged?.has(k) && 'ring-2 ring-piku/40');
   const dis = (k: keyof Task) => !editable(k);
@@ -39,7 +40,7 @@ function TaskFields({ form, set, editable, users, aiChanged }: {
       <Field label="Description" className="col-span-2"><Textarea className={mark('description')} value={form.description ?? ''} disabled={dis('description')} onChange={(e) => set('description', e.target.value)} /></Field>
       <Field label="Assignee">
         <Select className={mark('assignee_user_id')} value={form.assignee_user_id ?? ''} disabled={dis('assignee_user_id')} onChange={(e) => set('assignee_user_id', e.target.value)}>
-          <option value="">Unassigned</option>{users.map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name}</option>)}
+          <option value="">Unassigned</option>{users.map((u) => <option key={u.user_id} value={u.user_id} disabled={u.offTeam}>{u.full_name}{u.offTeam ? ' (not on the team)' : ''}</option>)}
         </Select>
       </Field>
       <Field label="Status">
@@ -90,6 +91,7 @@ export default function TaskPanel({ taskId, projectId, version, onClose, onChang
   const toast = useToast();
   const { session, can } = useSession();
   const users = useUsers();
+  const team = useTeam(projectId);
   const { data, error, loading, reload } = useApi<TaskDetail>(taskId ? `/tasks/${taskId}` : null, [taskId]);
   const [form, setForm] = useState<Form>({});
   const [tab, setTab] = useState<'details' | 'comms' | 'notes' | 'history'>('details');
@@ -187,7 +189,7 @@ export default function TaskPanel({ taskId, projectId, version, onClose, onChang
                     <button className="ml-2 text-[12px] underline" onClick={() => { setForm(base); setAi(null); }}>Undo suggestion</button>
                   </div>
                 )}
-                <TaskFields form={form} set={(k, v) => setForm((f) => ({ ...f, [k]: v }))} editable={editable} users={users} aiChanged={ai?.changed} />
+                <TaskFields form={form} set={(k, v) => setForm((f) => ({ ...f, [k]: v }))} editable={editable} users={withCurrent(team, users, t.assignee_user_id)} aiChanged={ai?.changed} />
                 <AiActions scope="task" id={t.task_id} onLogged={() => { reload(); onChanged(); }} />
               </div>
             )}
@@ -246,7 +248,7 @@ function HistoryDetails({ raw }: { raw: string }) {
 /** Add task panel (with AI suggestion of tasks for the activity). */
 export function AddTaskPanel({ open, onClose, activity, onSaved }: { open: boolean; onClose: () => void; activity: Activity; onSaved: () => void }) {
   const toast = useToast();
-  const users = useUsers();
+  const users = useTeam(activity.project_id);
   const blank: Form = { title: '', description: '', assignee_user_id: '', status: 'Not Started', priority: 'Medium', due_date: '', start_date: '', percent_complete: '0', effort_hours: '', day1_critical: 'N', dependency_notes: '', done_notes: '', pending_notes: '' };
   const [form, setForm] = useState<Form>(blank);
   const [saving, setSaving] = useState(false);

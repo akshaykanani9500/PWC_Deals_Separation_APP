@@ -134,3 +134,23 @@ test('impossible widget request offers "Ask the analytics team"', async ({ page,
   const audit = await apiGet<any[]>(request, 'RISK', '/audit');
   expect(audit.some((a) => a.action === 'dashboard.widget_request')).toBe(true);
 });
+
+test('new project: a selected but unapplied AI option is not dropped on Create', async ({ page, request }) => {
+  await loginUI(page, 'MANAGER');
+  await page.getByRole('button', { name: 'New project' }).click();
+  const dlg = page.getByRole('dialog').first();
+  await dlg.getByLabel('Code name').fill('Project Unapplied E2E');
+  await dlg.getByLabel('Description').fill('SAP S/4 carve-out with 2 plants');
+  await dlg.getByRole('button', { name: 'Suggest a plan from past deals' }).click();
+  await expect(dlg.getByTestId('ai-suggest-result')).toBeVisible({ timeout: 15000 });
+  await dlg.getByRole('button', { name: 'Create project' }).click();
+  const ask = page.getByRole('dialog', { name: 'Use the selected AI plan?' });
+  await expect(ask).toBeVisible();
+  await ask.getByTestId('use-selected-plan').click();
+  await expect(page.getByRole('heading', { name: 'Project Unapplied E2E' })).toBeVisible();
+  await expect(page.getByText('Project Project')).toHaveCount(0);
+  const pid = page.url().match(/projects\/(PRJ-\d+)/)![1];
+  const detail = await apiGet<any>(request, 'MANAGER', `/projects/${pid}`);
+  const st = await apiGet<any>(request, 'MANAGER', `/stages/${detail.stages[0].stage_id}`);
+  expect(st.activities.length).toBeGreaterThan(0);
+});

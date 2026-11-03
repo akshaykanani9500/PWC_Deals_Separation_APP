@@ -17,7 +17,7 @@ import { activeGrantsFor, viaGrant } from '../services/grants';
 import { withdrawProjectAccess } from '../services/approvals';
 import { grantable, grantState, permissionLabel } from '../../../shared/access';
 import { isOverdue, rollupProject, today } from '../services/rollup';
-import { assertOpen, byOrder, pickFields, userIndex } from './helpers';
+import { assertOpen, assertTeamIds, byOrder, pickFields, userIndex } from './helpers';
 import { syncFundingGap } from '../services/finance';
 
 const optStr = z.string().optional().nullable();
@@ -54,6 +54,7 @@ const FIN_FIELDS = ['fee_budget', 'fee_billed', 'tsa_monthly_cost', 'one_time_co
 
 /** Insert activities (+ tasks) under a stage. */
 export async function createActivityTree(db: Db, actor: string, stage: Stage, acts: ActivityTree[], startOrder = 1): Promise<Activity[]> {
+  await assertTeamIds(db, stage.project_id, acts.flatMap((a) => [a.owner_user_id, ...(a.tasks ?? []).map((t) => t.assignee_user_id)]), 'Owners and assignees');
   const created: Activity[] = [];
   let order = startOrder;
   for (const a of acts) {
@@ -75,6 +76,7 @@ export async function createActivityTree(db: Db, actor: string, stage: Stage, ac
 }
 
 export async function createStageTree(db: Db, actor: string, projectId: string, stages: StageTree[], startOrder = 1): Promise<Stage[]> {
+  await assertTeamIds(db, projectId, stages.map((s) => s.owner_user_id), 'The stage owner');
   const out: Stage[] = [];
   let order = startOrder;
   for (const s of stages) {

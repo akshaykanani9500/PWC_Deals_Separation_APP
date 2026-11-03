@@ -9,7 +9,8 @@ import { post } from '../../lib/api';
 import { useSession } from '../../lib/session';
 import { useUsers } from '../../hooks/useUsers';
 import { SidePanel } from '../../components/SidePanel';
-import { Checkbox, Field, Input, Select, Textarea, AiLabel } from '../../components/ui';
+import { Button, Checkbox, Field, Input, Select, Textarea, AiLabel } from '../../components/ui';
+import { Modal } from '../../components/Modal';
 import { useToast } from '../../components/toast';
 import AiSuggestButton from '../../features/ai/AiSuggestButton';
 import { StageList, stagesPayload, toPlanStages, planCounts, type PlanStage } from '../../components/PlanTree';
@@ -33,6 +34,9 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
   const [aiMeta, setAiMeta] = useState<{ mode: string; rationale: string; sources: { id: string; label: string }[] } | null>(null);
   const [saving, setSaving] = useState(false);
   const [finOpen, setFinOpen] = useState(false);
+  /** v1.4.1: an AI option the user selected but did not apply; Create asks whether to use it (never dropped silently). */
+  const [pending, setPending] = useState<{ draft: SuggestResponse['draft']; response: SuggestResponse; label: string } | null>(null);
+  const [askPlan, setAskPlan] = useState(false);
   const canFinance = !!session?.actions.includes('finance.view');
   const set = (k: keyof ReturnType<typeof blank>, v: string) => setF((s) => ({ ...s, [k]: v }));
 
@@ -44,16 +48,17 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
       if (session?.persona.code === 'MANAGER') b.manager_user_id = session.user.user_id;
       return b;
     });
-    setPlan(null); setAiMeta(null); setFinOpen(false);
+    setPlan(null); setAiMeta(null); setFinOpen(false); setPending(null); setAskPlan(false);
   }, [open, session]);
 
   const partners = users.filter((u) => u.persona_code === 'PARTNER');
   const managers = users.filter((u) => u.persona_code === 'MANAGER');
 
-  function applySuggestion(draft: SuggestResponse['draft'], res: SuggestResponse) {
+  function applySuggestion(draft: SuggestResponse['draft'], res: SuggestResponse): PlanStage[] | null {
     const d = (Array.isArray(draft) ? { stages: draft } : draft) as Record<string, unknown>;
     const stages = toPlanStages(d.stages);
     if (stages.length) setPlan(stages);
+    setPending(null);
     setF((s) => ({
       ...s,
       description: s.description || (typeof d.description === 'string' ? d.description : s.description),
@@ -61,10 +66,16 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
       code_name: s.code_name || (typeof d.name === 'string' ? d.name : typeof d.code_name === 'string' ? d.code_name : s.code_name),
     }));
     setAiMeta({ mode: res.mode, rationale: res.rationale, sources: res.sources });
+    return stages.length ? stages : null;
   }
 
-  async function save() {
+  async function save(choice?: 'use' | 'standard') {
     if (!f.code_name.trim()) { toast.error('Give the project a code name.'); return; }
+    let usePlan = plan;
+    if (!plan && pending && !choice) { setAskPlan(true); return; }
+    if (choice === 'use' && pending) usePlan = applySuggestion(pending.draft, pending.response);
+    if (choice === 'standard') setPending(null);
+    setAskPlan(false);
     if (f.start_date && f.target_close_date && f.target_close_date < f.start_date) { toast.error('Target close must be after the start date.'); return; }
     setSaving(true);
     try {
@@ -72,13 +83,13 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
         ...Object.fromEntries(Object.entries(f).filter(([k, v]) => v !== '' && (canFinance || !(FINANCE_KEYS as readonly string[]).includes(k)))), status: 'Planning',
       };
       for (const k of FINANCE_KEYS) if (k !== 'spa_clause_ref' && body[k] !== undefined) body[k] = Number(body[k]);
-      if (plan) { body.stages = stagesPayload(plan); if (aiMeta) body.fromAi = true; }
+      if (usePlan) { body.stages = stagesPayload(usePlan); if (aiMeta || choice === 'use') body.fromAi = true; }
       const members: { user_id: string; member_role: string }[] = [];
       if (f.partner_user_id) members.push({ user_id: f.partner_user_id, member_role: 'Partner' });
       if (f.manager_user_id) members.push({ user_id: f.manager_user_id, member_role: 'Manager' });
       if (members.length) body.members = members;
       const res = await post<ProjectDetail>('/projects', body);
-      toast.success(`Project ${res.project.code_name} created`);
+      toast.success(`${/^project\b/i.test(res.project.code_name) ? '' : 'Project '}${res.project.code_name} created`);
       onClose();
       nav(`/projects/${res.project.project_id}`);
     } catch (e) { toast.error(e); } finally { setSaving(false); }
@@ -88,7 +99,7 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
 
   return (
     <SidePanel open={open} onClose={onClose} width="lg" title="New project" subtitle="Set up the engagement. Start from an AI-suggested plan or the standard five stages."
-      onSave={save} saving={saving} saveLabel="Create project">
+      onSave={() => save()} saving={saving} saveLabel="Create project">
       <div className="grid grid-cols-2 gap-3">
         <Field label="Code name" className="col-span-2"><Input value={f.code_name} onChange={(e) => set('code_name', e.target.value)} placeholder="e.g. Project Atlas" autoFocus /></Field>
         <Field label="Client (described, no real name)" className="col-span-2"><Input value={f.client_alias} onChange={(e) => set('client_alias', e.target.value)} placeholder="e.g. Global payments firm divesting its card unit" /></Field>
@@ -149,7 +160,8 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
           <AiSuggestButton
             label={plan ? 'Suggest again' : 'Suggest a plan from past deals'}
             request={{ kind: 'project', hints: { deal_type: f.deal_type, industry: f.industry, name: f.code_name, description: f.description }, current: { ...f } /* every typed field; the server merges them (typed values win) */ }}
-            onApply={applySuggestion}
+            onApply={(d, r) => { applySuggestion(d, r); }}
+            onPendingChange={setPending}
           />
         </div>
         <div className="px-3 py-2">
@@ -174,6 +186,14 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
           )}
         </div>
       </div>
+      <Modal open={askPlan} onClose={() => setAskPlan(false)} width="md" title="Use the selected AI plan?" label="Use the selected AI plan?"
+        footer={<>
+          <Button variant="ghost" onClick={() => setAskPlan(false)} className="mr-auto">Back</Button>
+          <Button onClick={() => save('standard')}>Standard five stages</Button>
+          <Button variant="primary" onClick={() => save('use')} data-testid="use-selected-plan">Use "{pending?.label}"</Button>
+        </>}>
+        <p className="text-[13px] text-ink-soft">You selected the AI option <span className="font-medium text-ink">{pending?.label}</span> but did not press Apply. Create the project with that plan, or with the standard five empty stages?</p>
+      </Modal>
     </SidePanel>
   );
 }

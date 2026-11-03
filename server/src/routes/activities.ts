@@ -9,7 +9,7 @@ import { ensureAction, hasAction } from '../middleware/auth';
 import { canAddTaskToActivity, canDeleteVia, canEditActivity, canEditTask, filterCommunications, sanitizeContact } from '../services/access';
 import { audit } from '../services/audit';
 import { isOverdue, rollupProject, today } from '../services/rollup';
-import { assertOpen, byOrder, denyRow, loadActivity, loadTask, userIndex } from './helpers';
+import { assertOpen, byOrder, denyRow, loadActivity, loadTask, userIndex, assertTeamIds } from './helpers';
 
 const optStr = z.string().optional().nullable();
 const optNum = z.coerce.number().optional().nullable();
@@ -81,6 +81,7 @@ export function activitiesRouter(db: Db): Router {
       name: z.string().min(1).max(160).optional(), description: optStr, priority: z.enum(PRIORITY).optional().nullable(), owner_user_id: optStr,
       start_date: optStr, due_date: optStr, summary: optStr, sort_order: optNum,
     }).parse(req.body);
+    if (patch.owner_user_id && patch.owner_user_id !== activity.owner_user_id) await assertTeamIds(db, project.project_id, [patch.owner_user_id], 'The activity owner');
     const updated = await db.update<Activity>('activities', activity.activity_id, patch as Partial<Activity>, auth.user.user_id);
     await audit(db, auth, 'activity.update', { type: 'activity', id: activity.activity_id, projectId: project.project_id, details: patch });
     res.json(updated);
@@ -107,6 +108,7 @@ export function activitiesRouter(db: Db): Router {
     await ensureAction(db, auth, 'task.edit', { projectId: project.project_id, entity: 'task' });
     if (!(await canAddTaskToActivity(db, auth, activity))) await denyRow(db, auth, 'You can only add tasks in stages you lead.', { projectId: project.project_id, entity: 'task' });
     const body = normalizeTaskPatch(taskBody.parse(req.body) as Partial<Task>);
+    await assertTeamIds(db, project.project_id, [body.assignee_user_id], 'The assignee');
     const count = (await db.find<Task>('tasks', (t) => t.activity_id === activity.activity_id)).length;
     const task = await db.insert<Task>('tasks', {
       ...body, project_id: project.project_id, stage_id: activity.stage_id, activity_id: activity.activity_id,
@@ -125,6 +127,7 @@ export function activitiesRouter(db: Db): Router {
     await ensureAction(db, auth, 'task.edit', { projectId: project.project_id, entity: 'task' });
     if (!(await canAddTaskToActivity(db, auth, activity))) await denyRow(db, auth, 'You can only add tasks in stages you lead.', { projectId: project.project_id, entity: 'task' });
     const { tasks } = z.object({ tasks: z.array(taskBody).min(1) }).parse(req.body);
+    await assertTeamIds(db, project.project_id, tasks.map((t) => t.assignee_user_id), 'The assignee');
     const count = (await db.find<Task>('tasks', (t) => t.activity_id === activity.activity_id)).length;
     const created = await db.insertMany<Task>('tasks', tasks.map((raw, i) => {
       const t = normalizeTaskPatch(raw as Partial<Task>);
@@ -170,6 +173,7 @@ export function tasksRouter(db: Db): Router {
     const keys = Object.keys(parsed) as (keyof Task)[];
     const notAllowed = keys.filter((k) => !perms.editableFields.includes(k));
     if (notAllowed.length) await denyRow(db, auth, `You can only change: ${perms.editableFields.join(', ')}. Not allowed: ${notAllowed.join(', ')}.`, { projectId: project.project_id, entity: 'task', id: task.task_id });
+    if (parsed.assignee_user_id && parsed.assignee_user_id !== task.assignee_user_id) await assertTeamIds(db, project.project_id, [parsed.assignee_user_id], 'The assignee');
     const patch = normalizeTaskPatch(parsed, task);
     const updated = await db.update<Task>('tasks', task.task_id, patch, auth.user.user_id);
     await rollupProject(db, project.project_id, auth.user.user_id);

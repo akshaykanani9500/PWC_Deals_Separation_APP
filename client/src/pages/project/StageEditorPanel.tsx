@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { ArrowDown, ArrowUp, Plus, Trash2, ChevronRight, Sparkles } from 'lucide-react';
 import type { ProjectDetail, Stage, SuggestResponse } from '@shared/types';
 import { api, post, patch, del } from '../../lib/api';
-import { useUsers } from '../../hooks/useUsers';
+import { useTeam } from '../../hooks/useTeam';
 import { SidePanel, ConfirmDialog } from '../../components/SidePanel';
 import { AiLabel, AiStrip, Button, Field, Select, Textarea } from '../../components/ui';
 import { useToast } from '../../components/toast';
@@ -23,7 +23,7 @@ let seq = 0;
 
 export function StageEditorPanel({ open, detail, onClose, onSaved }: { open: boolean; detail: ProjectDetail; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
-  const users = useUsers();
+  const users = useTeam(detail.project.project_id);
   const [rows, setRows] = useState<Row[]>([]);
   const [removed, setRemoved] = useState<Row[]>([]);
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -139,7 +139,7 @@ export function StageEditorPanel({ open, detail, onClose, onSaved }: { open: boo
                     <Field label="Gate criteria (what must be true to move on)" className="col-span-2"><Textarea value={r.gate_criteria} onChange={(e) => set(r.key, { gate_criteria: e.target.value })} /></Field>
                     <Field label="Stage owner">
                       <Select value={r.owner_user_id} onChange={(e) => set(r.key, { owner_user_id: e.target.value })}>
-                        <option value="">No owner</option>{users.filter((u) => ['PARTNER', 'MANAGER', 'LEAD'].includes(u.persona_code)).map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name}</option>)}
+                        <option value="">No owner</option>{users.filter((u) => ['PARTNER', 'MANAGER', 'LEAD', 'EXEC'].includes(u.persona_code)).map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name}</option>)}
                       </Select>
                     </Field>
                     {r.activities && r.activities.length > 0 && <p className="self-end text-[12px] text-ink-muted">{r.activities.length} suggested activities will be created with this stage.</p>}
