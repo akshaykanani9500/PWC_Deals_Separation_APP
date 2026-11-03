@@ -157,7 +157,7 @@ export default function DashboardPage() {
 
       {customize && (
         <div className="mb-3 rounded-xl border border-dashed border-brand-ring bg-brand-soft/40 px-4 py-3">
-          <p className="text-[12.5px] text-ink-soft">Drag widgets by their title bar and resize from the bottom-right corner. Add widgets from the list below, or create your own with <button type="button" className="link" onClick={() => setBuilder({ open: true })}>New widget</button>.</p>
+          <p className="text-[12.5px] text-ink-soft">Drag widgets by their title bar and resize from the bottom-right corner. Add widgets from the list below, or <button type="button" className="link" onClick={() => setBuilder({ open: true })}>build your own widget</button> (manually or by describing it to AI).</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {catalog.length ? catalog.map((w) => (
               <button key={w.id} onClick={() => addWidget(w.id)} title={w.description}

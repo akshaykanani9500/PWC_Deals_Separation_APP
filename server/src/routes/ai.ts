@@ -98,11 +98,11 @@ export function createAiRouter(db: Db): Router {
     return rows.slice(-limit);
   }));
 
-  r.post('/suggest', route(['ai.suggest', 'project.create'], async (req) => {
+  // v1.4: no role-level gate here - suggest() checks ai.suggest / project.create after the project's grants are applied,
+  // so an approved acting role (e.g. analyst acting as Manager) can use suggestions on that one project.
+  r.post('/suggest', route(null, async (req) => {
     const body = req.body as SuggestRequest;
     if (!body || !KINDS.includes(body.kind)) throw bad('kind is invalid');
-    const acts = req.auth.actions as string[];
-    if (body.kind !== 'project' && !acts.includes('ai.suggest')) throw Object.assign(new Error('Your role cannot use AI suggestions'), { status: 403 });
     return suggest(db, req.auth, body);
   }));
 

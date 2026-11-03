@@ -8,6 +8,8 @@ import type { AuthContext } from '../auth-types';
 import type { WidgetChart, WidgetGroupBy, WidgetMetric, WidgetSpec, WidgetSuggestResponse } from '../../../shared/types';
 import { WIDGET_CHARTS, WIDGET_GROUPS, WIDGET_METRICS, describeSpec, groupDef, metricDef, normaliseSpec, specError } from '../../../shared/widgetCatalog';
 import { geminiConfigured, geminiJson } from './gemini';
+import { visibleProjectIds } from '../services/access';
+import type { Project } from '../../../shared/types';
 import { auditAi } from './audit';
 
 const METRIC_RULES: [RegExp, WidgetMetric][] = [
@@ -38,6 +40,15 @@ const GROUP_RULES: [RegExp, WidgetGroupBy][] = [
 ];
 /** Things the catalogue cannot answer: outside data, market data, people analytics. */
 const OUT_OF_SCOPE = /\b(stock|share price|market cap|weather|salary|salaries|payroll|competitor|revenue of|profit of|news|tweets?|crypto|bitcoin|exchange rate|gdp|headcount of|linkedin|forecast the|predict)\b/;
+
+/** A visible project whose code name (with or without "Project ") appears as a word in the text. */
+export function namedProject(text: string, projects: Project[]): Project | undefined {
+  const q = text.toLowerCase();
+  return projects.find((p) => {
+    const n = (p.code_name || '').toLowerCase().replace(/^project\s+/, '').trim();
+    return n.length >= 3 && new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(q);
+  });
+}
 
 const TITLE_CASE = (s: string) => s.replace(/\s+/g, ' ').trim().replace(/^\w/, (c) => c.toUpperCase()).slice(0, 80);
 
@@ -134,6 +145,28 @@ export async function suggestWidget(db: Db, auth: AuthContext, text: string): Pr
         out = fail(typeof g.data.reason === 'string' ? g.data.reason : out.reason, text, finance, client, g.model);
       }
     }
+  }
+  // A project named in the request ("... for Rioja") becomes filter.projectId - only projects this user can see.
+  if (out.possible) {
+    const visible = await visibleProjectIds(db, auth);
+    const projects = (await db.all<Project>('projects')).filter((p) => visible.has(p.project_id));
+    const named = namedProject(text, projects);
+    const notes: string[] = [];
+    if (named && !out.spec.filter?.projectId) {
+      const spec = normaliseSpec({ ...out.spec, filter: { ...(out.spec.filter ?? {}), projectId: named.project_id },
+        title: out.spec.title.toLowerCase().includes(named.code_name.toLowerCase().replace(/^project\s+/, '')) ? out.spec.title : `${out.spec.title} - ${named.code_name.replace(/^Project\s+/i, '')}`.slice(0, 80) });
+      out = { ...out, spec, explanation: describeSpec(spec) };
+      notes.push(`Limited to ${named.code_name}, the project named in your request.`);
+    } else if (!named && /\b(?:for|on|in)\s+(?:project\s+)?([A-Z][a-z]{2,})\b/.test(text)) {
+      const word = text.match(/\b(?:for|on|in)\s+(?:project\s+)?([A-Z][a-z]{2,})\b/)![1];
+      if (!/^(My|The|All|Each|Every|Project|Projects|Deals?|Day)$/.test(word)) notes.push(`"${word}" is not a project you can see, so the widget covers all your projects.`);
+    }
+    if (/\bmy\b/i.test(text) && !out.spec.filter?.mine) {
+      notes.push(auth.scope === 'all'
+        ? 'It counts every project you can see; "my" does not narrow it further.'
+        : 'It counts the projects you are staffed on (that is what "my" means here).');
+    }
+    if (notes.length) out = { ...out, explanation: `${out.explanation} ${notes.join(' ')}` };
   }
   await auditAi(db, auth, 'ai.widget_suggest', { possible: out.possible, mode: out.mode, metric: out.possible ? out.spec.metric : null }, { entityType: 'dashboard' });
   return out;

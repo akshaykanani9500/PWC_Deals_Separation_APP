@@ -24,6 +24,7 @@ import { todayIso } from './lang';
 import { redactText } from './redact';
 import { AiHttpError } from './summary';
 import { canAddActivityToStage, canAddTaskToActivity, canEditActivity, canEditTask } from '../services/access';
+import { rowCode } from '../services/grants';
 
 type DraftTask = { title: string; description?: string; priority: Priority; day1_critical: YN; effort_hours?: number };
 type DraftActivity = { name: string; description: string; priority: Priority; tasks: DraftTask[] };
@@ -101,7 +102,8 @@ function mergeForm(...layers: (Record<string, unknown> | undefined)[]): Record<s
   for (const l of layers) for (const [k, v] of Object.entries(l ?? {})) if (present(v)) out[k] = v;
   return out;
 }
-const TEXT_KEYS = ['code_name', 'name', 'client_alias', 'description', 'data_residency', 'tags', 'title', 'gate_criteria', 'dependency_notes', 'pending_notes', 'done_notes', 'stage_name', 'activity_name'];
+// data_residency is not read for keywords: the New project form pre-fills "India", which is a residency, not a DPDP deal signal
+const TEXT_KEYS = ['code_name', 'name', 'client_alias', 'description', 'tags', 'title', 'gate_criteria', 'dependency_notes', 'pending_notes', 'done_notes', 'stage_name', 'activity_name'];
 function textOf(...objs: (Record<string, unknown> | undefined)[]): string {
   const parts: string[] = [];
   for (const o of objs) {
@@ -548,6 +550,10 @@ async function assertSuggestAllowed(db: Db, auth: AuthContext, kind: SuggestRequ
   const acts = auth.actions as string[];
   const deny = (msg: string) => { throw new AiHttpError(403, msg); };
   if (scope.project?.status === 'Closed' && kind !== 'project') deny('This project is closed, so there is nothing to change.');
+  // v1.4: checked here, after the project's approved grants (e.g. an acting role) were applied by resolveScope.
+  if (kind !== 'project' && !acts.includes('ai.suggest')) deny('Your role cannot use AI suggestions on this project.');
+  if (kind === 'project' && !acts.includes('ai.suggest') && !acts.includes('project.create')) deny('Your role cannot use AI suggestions on this project.');
+  const lead = scope.project ? rowCode(auth, scope.project.project_id) === 'LEAD' : auth.code === 'LEAD';
   switch (kind) {
     case 'project':
       if (scope.project && !acts.includes('project.edit')) deny('Your role cannot edit this project, so AI suggestions for it are not available.');
@@ -561,15 +567,15 @@ async function assertSuggestAllowed(db: Db, auth: AuthContext, kind: SuggestRequ
       if (!acts.includes('stage.edit')) deny('Only the Engagement Partner or Manager can change stages, so stage suggestions are not available for your role.');
       return;
     case 'activities':
-      if (scope.stage && !(await canAddActivityToStage(db, auth, scope.stage))) deny(auth.code === 'LEAD' ? 'You can only get activity suggestions for the stages you lead.' : 'Your role cannot add activities here.');
+      if (scope.stage && !(await canAddActivityToStage(db, auth, scope.stage))) deny(lead ? 'You can only get activity suggestions for the stages you lead.' : 'Your role cannot add activities here.');
       return;
     case 'activity':
       if (scope.activity ? !(await canEditActivity(db, auth, scope.activity)) : scope.stage ? !(await canAddActivityToStage(db, auth, scope.stage)) : false) {
-        deny(auth.code === 'LEAD' ? 'You can only get activity suggestions for the stages you lead.' : 'Your role cannot edit this activity.');
+        deny(lead ? 'You can only get activity suggestions for the stages you lead.' : 'Your role cannot edit this activity.');
       }
       return;
     case 'tasks':
-      if (scope.activity && !(await canAddTaskToActivity(db, auth, scope.activity))) deny(auth.code === 'LEAD' ? 'You can only get task suggestions in the stages you lead.' : 'Your role cannot add tasks here.');
+      if (scope.activity && !(await canAddTaskToActivity(db, auth, scope.activity))) deny(lead ? 'You can only get task suggestions in the stages you lead.' : 'Your role cannot add tasks here.');
       return;
     case 'task':
       if (scope.task && !(await canEditTask(db, auth, scope.task)).canEdit) deny('You cannot edit this task, so there is no update to suggest.');
@@ -583,7 +589,7 @@ function promptValues(form: Record<string, unknown>, current?: Record<string, un
   const keep = ['code_name', 'client_alias', 'deal_type', 'industry', 'description', 'data_residency', 'sensitivity', 'clean_team_required', 'tags', 'apps_in_scope', 'sites_in_scope', 'employees_conveying', 'target_close_date', 'start_date'];
   for (const k of keep) if (present(form[k])) out[k] = typeof form[k] === 'string' ? redactText(String(form[k]), []).text.slice(0, 600) : form[k];
   for (const [k, v] of Object.entries(current ?? {})) {
-    if (k in out || /(_id$|fee|cost|funding|billed|budget|tsa_monthly)/.test(k)) continue;
+    if (k in out || /(_id$|fee|cost|funding|billed|budget|tsa_monthly|spa_)/.test(k)) continue;
     if (typeof v === 'string' && v.trim()) out[k] = redactText(v, []).text.slice(0, 400);
     else if (Array.isArray(v)) out[k] = v.slice(0, 20).map((r) => (typeof r === 'string' ? r : (r as any)?.name ?? (r as any)?.title)).filter(Boolean);
   }

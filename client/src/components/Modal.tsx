@@ -33,10 +33,11 @@ export function Modal({ open, onClose, title, icon, headerRight, children, foote
   if (!open) return null;
   const w = width === 'xl' ? 'max-w-3xl' : width === 'md' ? 'max-w-md' : 'max-w-2xl';
   return createPortal(
-    <div className="fixed inset-0 z-[75] flex items-center justify-center p-3 sm:p-6" data-testid="modal">
+    // pb-24 keeps the footer clear of the toast area at the bottom of the screen (toasts sit above modals)
+    <div className="fixed inset-0 z-[75] flex items-start justify-center px-3 pb-24 pt-4 sm:px-6 sm:pt-8" data-testid="modal">
       <div className="absolute inset-0 bg-ink/45" onClick={onClose} aria-hidden />
       <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={label ?? (typeof title === 'string' ? title : undefined)}
-        className={clsx('relative flex max-h-[92vh] w-full flex-col rounded-2xl border border-line bg-surface shadow-pop outline-none', w)}>
+        className={clsx('relative flex max-h-full w-full flex-col rounded-2xl border border-line bg-surface shadow-pop outline-none', w)}>
         <header className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-3">
           {icon && <span className="text-piku">{icon}</span>}
           <h3 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink">{title}</h3>

@@ -215,3 +215,75 @@ describe('widget API and comms log (HTTP)', () => {
     expect(r.body.attendeeIds.length).toBe(r.body.attendees.length);
   });
 });
+
+describe('v1.4 fix round (C)', () => {
+  let t: Awaited<ReturnType<typeof makeTestApp>>;
+  beforeAll(async () => { t = await makeTestApp(); });
+  const grant = async (userId: string, code: string, projectId = 'PRJ-0001') => {
+    const now = Date.now();
+    await t.db.insert<any>('access_grants', {
+      project_id: projectId, grantee_user_id: userId, permission_code: code, justification: 'test acting role grant', duration_days: 30,
+      status: 'Active', requested_by: userId, starts_at: new Date(now - 1000).toISOString(), expires_at: new Date(now + 30 * 864e5).toISOString(),
+    });
+  };
+
+  it('acting roles can use AI suggestions on that project only; analysts without a grant and clients stay refused', async () => {
+    const analyst = await t.as(APP.neha);
+    expect((await analyst.post('/api/ai/suggest', { kind: 'stages', projectId: 'PRJ-0001' })).status).toBe(403);
+    expect((await (await t.as(APP.lisa)).post('/api/ai/suggest', { kind: 'stages', projectId: 'PRJ-0001' })).status).toBe(403);
+    await grant(APP.neha, 'role.MANAGER');
+    const ok = await analyst.post('/api/ai/suggest', { kind: 'stages', projectId: 'PRJ-0001' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.options.length).toBeGreaterThan(0);
+    expect((await analyst.post('/api/ai/suggest', { kind: 'project_fields', projectId: 'PRJ-0001' })).status).toBe(200);
+    // the grant does not reach another project
+    const other = (await analyst.get('/api/projects')).body.map((p: any) => p.project_id).find((id: string) => id !== 'PRJ-0001');
+    expect((await analyst.post('/api/ai/suggest', { kind: 'stages', projectId: other })).status).toBe(403);
+    // nor a new project (needs project.create)
+    expect((await analyst.post('/api/ai/suggest', { kind: 'project', hints: { deal_type: 'TSA exit' } })).status).toBe(403);
+    // widgets stay role-only, with a message that explains grants
+    const w = await analyst.post('/api/dashboard/widget-data', { spec: { title: 'x', metric: 'fee_budget', groupBy: 'none', chart: 'kpi', filter: { projectId: 'PRJ-0001' } } });
+    expect(w.status).toBe(403);
+    expect(w.body.error).toMatch(/Finance page/);
+  });
+
+  it('money widgets and dashboard KPIs never add up different currencies', async () => {
+    const mgr = await t.as(APP.ananya);
+    const ids: string[] = (await mgr.get('/api/projects')).body.map((p: any) => p.project_id);
+    await t.db.update('projects', ids[0], { currency: 'EUR', fee_budget: 1000 });
+    const kpi = await mgr.post('/api/dashboard/widget-data', { spec: { title: 'Fees', metric: 'fee_budget', groupBy: 'none', chart: 'kpi' } });
+    expect(kpi.status).toBe(200);
+    expect(kpi.body.byCurrency.map((c: any) => c.currency)).toEqual(expect.arrayContaining(['EUR', 'USD']));
+    expect(kpi.body.byCurrency.find((c: any) => c.currency === 'EUR').total).toBe(1000);
+    expect(kpi.body.note).toMatch(/different currencies/);
+    const byProject = await mgr.post('/api/dashboard/widget-data', { spec: { title: 'Fees', metric: 'fee_budget', groupBy: 'project', chart: 'bar' } });
+    const eurRow = byProject.body.rows.find((r: any) => r.currency === 'EUR');
+    expect(eurRow.label).toMatch(/\(EUR\)/);
+    const dash = (await mgr.get('/api/dashboard')).body.kpis;
+    expect(dash.financeCurrency).toBe('USD');
+    expect(dash.financeOtherCurrencyProjects).toBe(1);
+    await t.db.update('projects', ids[0], { currency: 'USD' });
+  });
+
+  it('a project named in a widget request becomes the project filter (visible projects only)', async () => {
+    const mgr = await t.as(APP.ananya);
+    const projects = (await mgr.get('/api/projects')).body;
+    const p = projects[0];
+    const name = String(p.code_name).replace(/^Project\s+/, '');
+    const r = await mgr.post('/api/dashboard/widgets/suggest', { text: `hours planned per month for ${name}` });
+    expect(r.body).toMatchObject({ possible: true, spec: { metric: 'hours_planned', groupBy: 'month', filter: { projectId: p.project_id } } });
+    expect(r.body.explanation).toContain(p.code_name);
+    // a project the analyst cannot see is not mapped
+    const all = await t.db.all<any>('projects');
+    const visible = new Set((await (await t.as(APP.neha)).get('/api/projects')).body.map((x: any) => x.project_id));
+    const hidden = all.find((x) => !visible.has(x.project_id));
+    const h = await (await t.as(APP.neha)).post('/api/dashboard/widgets/suggest', { text: `open tasks by month for ${String(hidden.code_name).replace(/^Project\s+/, '')}` });
+    expect(h.body.spec?.filter?.projectId).toBeUndefined();
+    expect(h.body.explanation).toMatch(/not a project you can see/);
+  });
+
+  it('the pre-filled India residency is not a DPDP deal signal', async () => {
+    const r = await run({ kind: 'project', hints: { deal_type: 'TSA exit', industry: 'Consumer & Retail' }, current: { description: 'Retail spin-off', data_residency: 'India' } });
+    expect(r.inputSignals!.map((s) => s.id)).not.toContain('india_dpdp');
+  });
+});

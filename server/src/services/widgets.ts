@@ -21,7 +21,9 @@ export function checkSpec(auth: AuthContext, raw: unknown): WidgetSpec {
   if (err) throw new HttpError(400, err, 'VALIDATION');
   const spec = normaliseSpec(raw as WidgetSpec);
   const m = metricDef(spec.metric)!;
-  if (m.finance && !auth.actions.includes('finance.view')) throw new HttpError(403, 'Finance figures are not available to your role.', 'FORBIDDEN');
+  if (m.finance && !auth.actions.includes('finance.view')) {
+    throw new HttpError(403, 'Finance figures are not available to your role. Dashboard widgets use your role only; finance access approved for one project (an access grant) applies only inside that project\'s Finance page.', 'FORBIDDEN');
+  }
   if (auth.code === 'CLIENT' && groupDef(spec.groupBy)?.people) throw new HttpError(403, 'People groupings are not available in the client view.', 'FORBIDDEN');
   return spec;
 }
@@ -42,6 +44,9 @@ export async function computeWidget(db: Db, auth: AuthContext, raw: unknown): Pr
     projects = projects.filter((p) => mine.has(p.project_id) || p.partner_user_id === me || p.manager_user_id === me);
   }
   const pById = new Map(projects.map((p) => [p.project_id, p]));
+  const cur = (p: Project) => (p.currency || 'USD').toUpperCase();
+  const currencies = m.unit === 'money' ? Array.from(new Set(projects.map(cur))).sort() : [];
+  const mixed = currencies.length > 1;
   const stages = await db.all<Stage>('stages');
   const stageBy = new Map(stages.map((s) => [s.stage_id, s]));
   const users = new Map((await db.all<User>('users', { includeDeleted: true })).map((u) => [u.user_id, u.full_name]));
@@ -102,7 +107,8 @@ export async function computeWidget(db: Db, auth: AuthContext, raw: unknown): Pr
         case 'funding_gap': v = Number(p.funding_gap) || 0; break;
       }
       const [k, l] = keyFor(p);
-      add(k, l, v);
+      // money in different currencies is never added up: split each group by currency when the scope mixes them
+      if (mixed) { const c = cur(p); add(`${k}|${c}`, `${l} (${c})`, v); } else add(k, l, v);
     }
   }
 
@@ -122,10 +128,18 @@ export async function computeWidget(db: Db, auth: AuthContext, raw: unknown): Pr
   if (spec.groupBy === 'month') rows = rows.filter((r) => r.key !== '-').slice(-18);
   else rows = rows.slice(0, 25);
   const all = [...groups.values()].flatMap((g) => g.values);
-  const total = agg(all);
-  const currency = m.unit === 'money' ? (projects.find((p) => p.currency)?.currency ?? 'USD') : undefined;
+  const total = mixed ? 0 : agg(all);
+  const currency = m.unit === 'money' ? (currencies[0] ?? 'USD') : undefined;
+  const byCurrency = mixed
+    ? currencies.map((c) => ({ currency: c, total: agg(projects.filter((p) => cur(p) === c).map((p) => {
+      switch (spec.metric) { case 'fee_budget': return Number(p.fee_budget) || 0; case 'fee_billed': return Number(p.fee_billed) || 0; case 'tsa_run_rate': return Number(p.tsa_monthly_cost) || 0; default: return Number(p.funding_gap) || 0; }
+    })) }))
+    : undefined;
+  if (mixed) rows = rows.map((r) => ({ ...r, currency: r.key.split('|').pop() }));
   return {
-    spec, unit: m.unit, currency, total, rows,
-    note: !projects.length ? 'No projects match these filters right now (only projects you can see are counted).' : !rows.length ? 'Nothing to show for these filters right now.' : undefined,
+    spec, unit: m.unit, currency, total, rows, currencies: m.unit === 'money' ? currencies : undefined, byCurrency,
+    note: !projects.length ? 'No projects match these filters right now (only projects you can see are counted).'
+      : mixed ? `These projects use different currencies (${currencies.join(', ')}), so amounts are shown per currency and not added up.`
+      : !rows.length ? 'Nothing to show for these filters right now.' : undefined,
   };
 }
