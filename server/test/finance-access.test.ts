@@ -131,7 +131,8 @@ describe('two-level access governance', () => {
     // reject needs a reason
     expect((await t.as(USERS.daniel).post(`/api/access/requests/${self.body.grant_id}/decision`, { decision: 'reject' })).status).toBe(400);
     const l1 = await t.as(USERS.daniel).post(`/api/access/requests/${self.body.grant_id}/decision`, { decision: 'approve', note: 'OK for one week.' });
-    expect(l1.body.state).toBe('Pending L2');
+    // v1.4 risk tiers: full contacts are level-1 only, so the manager's approval switches it on straight away
+    expect(l1.body.state).toBe('Active');
 
     // manager cannot sponsor a permission he does not hold (finance.edit) ...
     expect((await t.as(USERS.daniel).post('/api/access/requests', { project_id: RIOJA, grantee_user_id: USERS.rohan, permission_code: 'finance.edit', justification: 'Rohan should maintain the cost lines.', duration_days: 30 })).status).toBe(403);

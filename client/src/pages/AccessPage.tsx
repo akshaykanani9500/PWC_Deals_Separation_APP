@@ -3,7 +3,8 @@ import { useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { Inbox, KeyRound, ListChecks, ShieldCheck } from 'lucide-react';
 import type { AccessRequestRow } from '@shared/types';
-import { GRANTABLE } from '@shared/access';
+import { GRANTABLE, policyText } from '@shared/access';
+import { HowApprovalWorks } from '../features/access/ApprovalRules';
 import { useApi } from '../hooks/useApi';
 import { useSession } from '../lib/session';
 import { Breadcrumbs, EmptyState, Input, Select, Skeleton, onTabListKey } from '../components/ui';
@@ -23,7 +24,7 @@ export default function AccessPage() {
 
   const rows = useMemo(() => {
     let r = data ?? [];
-    if (view === 'inbox') r = r.filter((g) => g.can.approveL1 || g.can.approveL2);
+    if (view === 'inbox') r = r.filter((g) => g.can.approveL1 || g.can.approveL2).sort((a, b) => Number(!!b.escalated) - Number(!!a.escalated));
     if (view === 'mine') r = r.filter((g) => g.grantee_user_id === me || g.requested_by === me);
     if (state) r = r.filter((g) => g.state === state);
     if (q.trim()) {
@@ -52,8 +53,8 @@ export default function AccessPage() {
         <div>
           <h1 className="text-[22px] font-semibold">Access &amp; approvals</h1>
           <p className="mt-0.5 max-w-[80ch] text-[13.5px] text-ink-soft">
-            Extra permissions are given per project, for a limited time, after two approvals: <b>level 1</b> by the engagement (Partner / Manager) and
-            <b> level 2</b> by Risk &amp; Quality. Request access from the <b>Access</b> button on a project page.
+            Extra permissions are given per project, for a limited time. <b>Level 1</b> is the engagement (Partner / Manager); riskier items also need
+            <b> level 2</b> by Risk &amp; Quality. To ask, open a project and use <b>Request access</b> (Partners and Managers: <b>Access &amp; approvals</b>) in the strip under the project header.
           </p>
         </div>
       </div>
@@ -82,7 +83,7 @@ export default function AccessPage() {
             <div className="space-y-3">{rows.map((g) => <RequestCard key={g.grant_id} g={g} onChanged={changed} />)}</div>
           ) : (
             <div className="card"><EmptyState icon={<ShieldCheck size={22} />} title={view === 'inbox' ? 'Nothing waiting for you' : 'No requests here'}
-              body={view === 'inbox' ? 'New requests that need your approval will appear here.' : 'Open a project and use the Access button to ask for extra, time-bound access.'} /></div>
+              body={view === 'inbox' ? 'New requests that need your approval will appear here.' : 'Open a project and use Request access (under the project header) to ask for extra, time-bound access.'} /></div>
           )}
         </div>
 
@@ -90,12 +91,13 @@ export default function AccessPage() {
           <section className="card px-4 py-3.5 text-[12.5px] text-ink-soft">
             <h2 className="mb-2 flex items-center gap-1.5 text-[13.5px] font-semibold text-ink"><ShieldCheck size={15} className="text-blue" /> Rules</h2>
             <ul className="list-disc space-y-1 pl-4">
-              <li>One person, one project, 7 / 30 / 90 days.</li>
+              <li>One person, one project, 7 / 30 / 90 days (full contacts and acting roles: 30 days at most).</li>
               <li>Level 1 holds the permission and is senior to the person getting it. A sponsoring Partner / Manager counts as level 1.</li>
-              <li>Level 2 is Risk &amp; Quality, never the requester or the level-1 approver.</li>
-              <li>Nobody approves their own request. Role-only rights (gate approval, close-out, audit, admin) never move between people.</li>
-              <li>Clients and control roles keep fixed access.</li>
+              <li>Level 2 (Risk &amp; Quality) only for riskier items: finance edits, acting roles and finance on clean-team deals.</li>
+              <li>Waiting 3+ days: escalated. 7 days without a decision: expired.</li>
+              <li>Nobody approves their own request. Gate approval, close-out, audit and admin never move between people.</li>
             </ul>
+            <div className="mt-2.5"><HowApprovalWorks /></div>
           </section>
           <section className="card px-4 py-3.5">
             <h2 className="mb-2 text-[13.5px] font-semibold">What can be requested</h2>
@@ -103,6 +105,7 @@ export default function AccessPage() {
               {GRANTABLE.map((g) => (
                 <li key={g.code} className="text-[12.5px]">
                   <div className="font-medium text-ink">{g.label}</div>
+                  <div className="text-ink-soft">Needs: {policyText(g.code).replace(/^Level/, 'level')} · up to {g.maxDays} days</div>
                   <div className="text-ink-muted">{g.description}</div>
                 </li>
               ))}

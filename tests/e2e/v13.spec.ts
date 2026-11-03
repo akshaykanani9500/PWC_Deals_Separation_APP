@@ -81,7 +81,7 @@ test('analyst is locked out, Risk & Quality approves her request, then finance o
   await card.getByRole('button', { name: 'Approve (level 2)' }).click();
   await card.getByRole('textbox').fill('Need-to-know confirmed.');
   await card.getByRole('button', { name: 'Approve and switch on' }).click();
-  await expect(page.getByText('Approved - access is live now')).toBeVisible();
+  await expect(page.getByText(/Approved — access is live until/)).toBeVisible(); // v1.4 toast names the end date
 
   // 3. Analyst again: finance is open, view only, with the approval chip.
   await loginAs(page, 'USR-0012');
@@ -104,8 +104,9 @@ test('manager sponsors access for an analyst from the project Access panel', asy
   await panel.getByLabel('Access for').selectOption({ label: 'Aditya Joshi (Analyst)' });
   await panel.getByLabel('Permission').selectOption({ label: 'See full phone numbers and emails' });
   await panel.getByLabel('Why is it needed?').fill('Aditya runs the vendor consent calls this week.');
-  await panel.getByRole('button', { name: 'Sponsor and send to Risk & Quality' }).click();
-  await expect(page.getByText('Sponsored - level 1 is done, now with Risk & Quality')).toBeVisible();
+  // v1.4 risk tiers: full contacts are level-1 only, so a sponsoring manager switches it on straight away
+  await panel.getByRole('button', { name: 'Sponsor and switch on' }).click();
+  await expect(page.getByText(/Live now — sponsored by you \(level 1 only\)/)).toBeVisible();
   await expect(panel.getByRole('article', { name: /See full phone numbers and emails for Aditya Joshi/ })).toBeVisible();
   expect(errors).toEqual([]);
 });

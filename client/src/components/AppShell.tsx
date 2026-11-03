@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import { Accessibility, ChevronDown, LayoutDashboard, LogOut, MoreHorizontal, Repeat2, X } from 'lucide-react';
-import { useAccessSummary } from '../features/access/useAccessSummary';
+import ApprovalsBell from '../features/access/ApprovalsBell';
 import { useSession } from '../lib/session';
 import { usePrefs, type TextSize } from '../lib/prefs';
 import { useOpenTabs, MAX_VISIBLE_TABS, type OpenTab } from '../lib/openTabs';
@@ -47,13 +47,13 @@ export default function AppShell() {
   const [menu, setMenu] = useState(false);
   const menuRef = useClickOutside(() => setMenu(false));
   const accessNav = can('access.request') || can('access.approve') || can('access.review');
-  const access = useAccessSummary(!!session && accessNav);
 
   if (!session) return null;
   const links: { to: string; label: string; show: boolean; end?: boolean; badge?: number }[] = [
     { to: '/', label: 'Dashboard', show: true, end: true },
     { to: '/knowledge', label: 'Knowledge hub', show: can('knowledge.view') },
-    { to: '/access', label: 'Access', show: accessNav, badge: access?.inbox || 0 },
+    // Counts live on the approvals bell (top right) so there is one badge, not two.
+    { to: '/access', label: 'Access', show: accessNav },
     { to: '/audit', label: 'Audit log', show: can('audit.view') },
     { to: '/admin/data', label: 'Data admin', show: can('admin.data') },
   ].filter((l) => l.show);
@@ -75,6 +75,7 @@ export default function AppShell() {
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-3">
+            {accessNav && <ApprovalsBell userId={session.user.user_id} canAsk={can('access.request') || can('access.approve')} />}
             <AiStatusButton />
             <div className="relative" ref={menuRef}>
               <button onClick={() => setMenu((m) => !m)} className="flex h-9 items-center gap-2 rounded-md px-2 text-chrome-text hover:bg-chrome-soft"

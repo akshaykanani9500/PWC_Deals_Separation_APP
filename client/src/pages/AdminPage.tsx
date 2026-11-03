@@ -1,9 +1,12 @@
 /** Data admin: which database is in use, row counts, reload from Google Sheets, exports for Oracle (v3). */
-import { useState } from 'react';
-import { Database, Download, RefreshCw, FileSpreadsheet, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Database, Download, RefreshCw, FileSpreadsheet, Sparkles, RotateCcw, AlertTriangle } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { clearUsersCache } from '../hooks/useUsers';
+import { ACCESS_CHANGED_EVENT } from '../features/access/useAccessSummary';
 import { useApi } from '../hooks/useApi';
 import { post, getToken } from '../lib/api';
-import { Button, Pill, Skeleton } from '../components/ui';
+import { Button, Input, Pill, Skeleton } from '../components/ui';
 import { useToast } from '../components/toast';
 import SheetsSetupCard from '../features/admin/SheetsSetupCard';
 
@@ -31,6 +34,7 @@ export default function AdminPage() {
   const { data, loading, error, reload } = useApi<DbInfo>('/admin/db');
   const ai = useApi<AiStatus>('/ai/status');
   const [busy, setBusy] = useState<string | null>(null);
+  const [resetOpen, setResetOpen] = useState(false);
 
   async function run(kind: string, fn: () => Promise<unknown>, done: string) {
     setBusy(kind);
@@ -92,6 +96,58 @@ export default function AdminPage() {
           </table>
         </section>
       </div>
+
+      <section className="card mt-4 border-rose/40 p-4" aria-labelledby="danger-h">
+        <h2 id="danger-h" className="flex items-center gap-2 text-[14px] font-semibold text-rose"><AlertTriangle size={15} aria-hidden /> Danger zone</h2>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <p className="max-w-[70ch] text-[13px] text-ink-soft">
+            <b>Reset demo data</b> wipes every table{data ? ` in the ${data.driver === 'sheets' ? 'Google Sheet' : 'local database'}` : ''} and loads the demo again, exactly like a fresh start
+            (projects, plans, finance, access requests). Everything people changed is lost. People stay signed in.
+          </p>
+          <Button variant="danger" icon={<RotateCcw size={14} />} onClick={() => setResetOpen(true)}>Reset demo data</Button>
+        </div>
+      </section>
+      <ResetDialog open={resetOpen} onCancel={() => setResetOpen(false)} onDone={() => { setResetOpen(false); reload(); }} />
     </div>
+  );
+}
+
+function ResetDialog({ open, onCancel, onDone }: { open: boolean; onCancel: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const [word, setWord] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!open) { setWord(''); return; }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onCancel(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, busy, onCancel]);
+  if (!open) return null;
+  async function go() {
+    setBusy(true);
+    try {
+      const r = await post<{ rows: number; driver: string }>('/admin/db/reset', { confirm: word });
+      clearUsersCache();
+      window.dispatchEvent(new Event(ACCESS_CHANGED_EVENT));
+      toast.success(`Demo data restored (${r.rows.toLocaleString()} rows). Other open tabs show it after a refresh.`);
+      onDone();
+    } catch (e) { toast.error(e); } finally { setBusy(false); }
+  }
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink/30 p-4" onClick={() => !busy && onCancel()}>
+      <div className="w-full max-w-md rounded-xl bg-surface p-5 shadow-pop" role="alertdialog" aria-modal="true" aria-labelledby="reset-h" onClick={(e) => e.stopPropagation()}>
+        <h3 id="reset-h" className="text-[15px] font-semibold">Reset all data to the demo?</h3>
+        <p className="mt-2 text-[13px] text-ink-soft">This replaces every table with the demo data. It cannot be undone. Download the workbook first if you want a copy.</p>
+        <label className="mt-3 block">
+          <span className="label">Type RESET to confirm</span>
+          <Input value={word} onChange={(e) => setWord(e.target.value)} autoFocus autoComplete="off" onKeyDown={(e) => { if (e.key === 'Enter' && word === 'RESET') go(); }} />
+        </label>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
+          <Button variant="danger" icon={<RotateCcw size={14} />} loading={busy} disabled={word !== 'RESET'} disabledReason="Type RESET first" onClick={go}>Reset demo data</Button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }

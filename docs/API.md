@@ -123,3 +123,27 @@ elsewhere. Keys are never logged, echoed, stored or audited (audit rows record o
 
 Every AI response carries `mode` ("gemini-2.5-flash" etc. or "offline") and is labelled "AI-generated" in the UI.
 Every AI call is written to `audit_log` with `ai_generated='Y'`.
+
+## v1.4 (A): access governance — risk tiers, acting roles, approvals bell, demo reset
+
+Rules: `shared/access.ts` (`GRANTABLE[].approvals` = `L1` | `L1+L2` | `L1+L2_IF_CLEAN_TEAM`, `maxDays`, `l1Personas`, `actingRole`; `APPROVAL_RULES`, `approvalMatrix()`).
+
+| Permission | Level 1 | Level 2 (Risk & Quality) | Max days |
+|---|---|---|---|
+| `task.edit`, `activity.edit` | Partner / Manager on the project | no | 90 |
+| `contacts.view.full` | Partner / Manager on the project | no | 30 |
+| `finance.view` | Partner / Manager on the project | only if `projects.clean_team_required = 'Y'` | 90 |
+| `finance.edit` | Partner on the project | yes | 90 |
+| `role.LEAD` / `role.MANAGER` / `role.PARTNER` (acting role) | Partner on the project | yes | 30 |
+
+- A qualifying sponsor counts as level 1; an L1-only item sponsored by a Partner/Manager is `Active` at once.
+- Pending > 3 days: `escalated: true` (the Deals Leader may then also give level 1). Pending ≥ 7 days: state `Expired` (computed on read; decisions return 409).
+- `POST /access/requests` returns **409** when nobody could approve a step, e.g. `No Partner on Project X can approve "Edit project finance" for … Ask the Deals Leader to add a Partner to the team.` or `No active Risk & Quality reviewer …`. Durations above `maxDays` → 400.
+- Every row (`AccessRequestRow`) now also carries `policy`, `needs_l2`, `acting_role`, `age_days`, `escalated`, `pending_expires_at`, `expired_pending`, `next_level`, `next_approvers: {user_id,name,role}[]`, `blocked_reason`, `status_line`, `last_event_at|by|kind`.
+- Mutating calls (`POST /requests`, `/decision`, `/revoke`, `/cancel`) add `notice`: a plain-words line naming who acts next (used as the toast).
+- `GET /access/feed` → `{ waiting: AccessRequestRow[], updates: AccessRequestRow[] }` for the top-bar bell (waiting = I can approve; updates = latest 8 of my own / sponsored requests).
+- `GET /access/preview?projectId=&permission=&grantee=` → `{ policy, needsL2, durations, sponsored, level1: ApproverRef[], level2: ApproverRef[], blocked }` (the approval route with names, before sending).
+- `GET /access/catalog` now also returns `matrix` (and `rules` = `APPROVAL_RULES`).
+- `DELETE /projects/:id/members/:memberId` now cancels the person's pending requests and revokes their active grants on that project (audited, `auto: true`) and returns `{ ok, withdrawn }`.
+- `GET /projects/:id` adds `memberAccess: { user_id, grant_id, label, acting_role, expires_at }[]` (live extra access of the team; empty for client users) and `grants[].acting_role`.
+- `POST /admin/db/reset` (admin.data) body `{ confirm: 'RESET' }` → wipes every table and reloads `buildSeed()` (same as a fresh start, local or Sheets via `replaceTable`), then audits `admin.db.reset`. Returns `{ ok, driver, rows }`. 400 without the confirm word, 403 for other roles. Tokens stay valid (user ids are stable).

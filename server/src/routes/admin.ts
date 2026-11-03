@@ -3,7 +3,7 @@ import type { Db } from '../db/Db';
 import type { AuthedRequest } from '../auth-types';
 import type { AuditEntry } from '../../../shared/types';
 import { SCHEMA_VERSION, TABLES, type TableName } from '../../../shared/schema';
-import { ah } from '../errors';
+import { ah, HttpError } from '../errors';
 import { ensureAction } from '../middleware/auth';
 import { visibleProjectIds } from '../services/access';
 import { audit } from '../services/audit';
@@ -61,6 +61,25 @@ export function adminRouter(db: Db): Router {
     await db.reload();
     await audit(db, (req as AuthedRequest).auth, 'admin.db.reload');
     res.json({ ok: true });
+  }));
+
+  /**
+   * v1.4: wipe every table and load the demo data again, exactly like a fresh start (scripts/seed.ts buildSeed, incl. the
+   * finance and access demo rows). Body { confirm: 'RESET' }. User ids are stable, so signed-in sessions stay valid.
+   */
+  r.post('/db/reset', ah(async (req, res) => {
+    const { auth } = req as AuthedRequest;
+    if ((req.body ?? {}).confirm !== 'RESET') throw new HttpError(400, 'Type RESET to confirm. This replaces every table with the demo data.', 'VALIDATION');
+    const target = db as Db & { replaceTable?: (t: TableName, rows: any[]) => Promise<void>; markSeeded?: () => Promise<void> };
+    if (typeof target.replaceTable !== 'function') throw new HttpError(501, `The ${db.driver} database cannot be reset from the app.`, 'VALIDATION');
+    const { buildSeed } = await import('../../../scripts/seed');
+    const data = await buildSeed();
+    for (const t of TABLES) await target.replaceTable(t.name as TableName, data[t.name] ?? []);
+    await target.markSeeded?.();
+    await db.reload();
+    await audit(db, auth, 'admin.db.reset', { details: { driver: db.driver, tables: TABLES.length } });
+    const counts = await db.counts();
+    res.json({ ok: true, driver: db.driver, rows: Object.values(counts).reduce((s, n) => s + n, 0) });
   }));
 
   r.get('/export/oracle', ah(async (req, res) => {

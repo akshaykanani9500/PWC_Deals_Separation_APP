@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { makeTestApp } from './helpers';
 import { PERMISSIONS, FINANCE_FIELDS } from '../../shared/permissions';
-import { grantActions } from '../../shared/access';
+import { grantActions, grantState } from '../../shared/access';
 
 let t: Awaited<ReturnType<typeof makeTestApp>>;
 beforeAll(async () => { t = await makeTestApp(); }, 60000);
@@ -29,11 +29,13 @@ function expectedVisible(userId: string): Set<string> {
   return ids;
 }
 
-/** Approved, unexpired access grants (two-level governance) add actions on ONE project only. */
+/**
+ * Approved, unexpired access grants (two-level governance) add actions on ONE project only.
+ * v1.4: grantActions() also expands acting-role grants (role.LEAD / role.MANAGER / role.PARTNER) into their bundle.
+ */
 function grantedOn(userId: string, projectId: string): string[] {
-  const now = Date.now();
   return (t.data.access_grants ?? [])
-    .filter((g) => g.grantee_user_id === userId && g.project_id === projectId && g.status === 'Active' && (!g.expires_at || Date.parse(g.expires_at) > now))
+    .filter((g) => g.grantee_user_id === userId && g.project_id === projectId && grantState(g) === 'Active')
     .flatMap((g) => grantActions(g.permission_code));
 }
 

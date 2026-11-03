@@ -8,7 +8,7 @@ import type { Project, Contact, Communication, Task, Activity, Stage, ProjectMem
 import { CLIENT_HIDDEN_PROJECT_FIELDS, FINANCE_FIELDS, maskContact } from '../../../shared/permissions';
 import { HttpError } from '../errors';
 import { audit } from './audit';
-import { applyProjectGrants } from './grants';
+import { applyProjectGrants, rowCode } from './grants';
 
 const has = (auth: AuthContext, a: string) => (auth.actions as string[]).includes(a);
 
@@ -99,7 +99,7 @@ export async function canEditActivity(db: Db, auth: AuthContext, activity: Activ
   if (!has(auth, 'activity.edit')) return false;
   if (await isProjectClosed(db, activity.project_id)) return false;
   if (!(await visible(db, auth, activity.project_id))) return false;
-  if (auth.code === 'LEAD') {
+  if (rowCode(auth, activity.project_id) === 'LEAD') {
     const stage = await db.get<Stage>('stages', activity.stage_id);
     return !!stage && leadsStage(db, auth, stage);
   }
@@ -111,7 +111,7 @@ export async function canAddActivityToStage(db: Db, auth: AuthContext, stage: St
   if (!has(auth, 'activity.edit')) return false;
   if (await isProjectClosed(db, stage.project_id)) return false;
   if (!(await visible(db, auth, stage.project_id))) return false;
-  if (auth.code === 'LEAD') return leadsStage(db, auth, stage);
+  if (rowCode(auth, stage.project_id) === 'LEAD') return leadsStage(db, auth, stage);
   return true;
 }
 
@@ -127,7 +127,7 @@ export async function canEditTask(db: Db, auth: AuthContext, task: Task): Promis
   if (!(await visible(db, auth, task.project_id))) return none;
   if (has(auth, 'task.edit')) {
     let full = true;
-    if (auth.code === 'LEAD') {
+    if (rowCode(auth, task.project_id) === 'LEAD') {
       const stage = await db.get<Stage>('stages', task.stage_id);
       full = !!stage && (await leadsStage(db, auth, stage));
     }
@@ -144,7 +144,7 @@ export async function canAddTaskToActivity(db: Db, auth: AuthContext, activity: 
   if (!has(auth, 'task.edit')) return false;
   if (await isProjectClosed(db, activity.project_id)) return false;
   if (!(await visible(db, auth, activity.project_id))) return false;
-  if (auth.code === 'LEAD') {
+  if (rowCode(auth, activity.project_id) === 'LEAD') {
     const stage = await db.get<Stage>('stages', activity.stage_id);
     return !!stage && leadsStage(db, auth, stage);
   }

@@ -1,7 +1,9 @@
 /** Project-level side panels: edit project, team. (Finance has its own full-screen workspace: pages/finance.) */
 import { useEffect, useMemo, useState } from 'react';
-import { Trash2, UserPlus, Sparkles } from 'lucide-react';
-import type { ProjectDetail, SuggestResponse } from '@shared/types';
+import { Trash2, UserPlus, Sparkles, KeyRound, ShieldCheck, UserCog } from 'lucide-react';
+import { ACCESS_CHANGED_EVENT } from '../../features/access/useAccessSummary';
+import type { PersonaCode, ProjectDetail, SuggestResponse } from '@shared/types';
+import { GRANTABLE, level1Check } from '@shared/access';
 import { DEAL_TYPES, INDUSTRIES, PROJECT_STATUS, SENSITIVITY, MEMBER_ROLES, RAG } from '@shared/schema';
 import { patch, post, del } from '../../lib/api';
 import { useApi } from '../../hooks/useApi';
@@ -101,7 +103,7 @@ export function EditProjectPanel({ open, detail, onClose, onSaved }: { open: boo
   );
 }
 
-export function TeamPanel({ open, detail, onClose, onSaved }: { open: boolean; detail: ProjectDetail; onClose: () => void; onSaved: () => void }) {
+export function TeamPanel({ open, detail, onClose, onSaved, onGiveAccess }: { open: boolean; detail: ProjectDetail; onClose: () => void; onSaved: () => void; onGiveAccess?: (userId: string) => void }) {
   const toast = useToast();
   const users = useUsers();
   const canEdit = detail.perms.canEditProject;
@@ -111,6 +113,11 @@ export function TeamPanel({ open, detail, onClose, onSaved }: { open: boolean; d
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<string | null>(null);
   const memberIds = new Set(detail.members.map((m) => m.user_id));
+  const canSponsor = !!detail.perms.canSponsorAccess && !!onGiveAccess;
+  const { session } = useSession();
+  const sponsorable = (code: PersonaCode) => !!session && GRANTABLE.some((g) => g.eligible.includes(code)
+    && level1Check(session.persona.code, session.actions as string[], code, g.code) === null);
+  const chips = (uid: string) => (detail.memberAccess ?? []).filter((c) => c.user_id === uid);
 
   async function add() {
     if (!userId) return;
@@ -119,7 +126,12 @@ export function TeamPanel({ open, detail, onClose, onSaved }: { open: boolean; d
     catch (e) { toast.error(e); } finally { setBusy(false); }
   }
   async function remove(id: string) {
-    try { await del(`/projects/${detail.project.project_id}/members/${id}`); toast.success('Removed from the team'); onSaved(); }
+    try {
+      const res = await del<{ ok: boolean; withdrawn?: number }>(`/projects/${detail.project.project_id}/members/${id}`);
+      const n = res?.withdrawn ?? 0;
+      toast.success(n ? `Removed from the team. ${n} extra access item${n === 1 ? ' was' : 's were'} withdrawn.` : 'Removed from the team');
+      onSaved(); window.dispatchEvent(new Event(ACCESS_CHANGED_EVENT));
+    }
     catch (e) { toast.error(e); } finally { setConfirm(null); }
   }
 
@@ -132,7 +144,22 @@ export function TeamPanel({ open, detail, onClose, onSaved }: { open: boolean; d
             <div className="min-w-0 flex-1">
               <div className="text-[13px] font-medium">{m.full_name}</div>
               <div className="text-[11.5px] text-ink-muted">{[m.member_role, PERSONA_LABEL[m.persona_code], m.workstream].filter(Boolean).join(' | ')}</div>
+              {chips(m.user_id).length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1" aria-label={`Extra access for ${m.full_name}`}>
+                  {chips(m.user_id).map((c) => (
+                    <span key={c.grant_id} className="inline-flex items-center gap-1 rounded-md bg-blue-soft px-1.5 py-[1px] text-[11.5px] font-medium text-blue" title={c.label}>
+                      {c.acting_role ? <UserCog size={11} aria-hidden /> : <ShieldCheck size={11} aria-hidden />}
+                      {c.acting_role ? `Acting ${PERSONA_LABEL[c.acting_role] ?? c.acting_role}` : c.label} · until {date(c.expires_at)}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
+            {canSponsor && m.user_id !== session?.user.user_id && sponsorable(m.persona_code) && detail.project.status !== 'Closed' && (
+              <button onClick={() => onGiveAccess!(m.user_id)} className="shrink-0 rounded px-1.5 py-1 text-[12px] font-medium text-link hover:bg-link-soft/40" aria-label={`Give extra access to ${m.full_name}`}>
+                <KeyRound size={12} className="mr-0.5 inline" aria-hidden /> Give extra access
+              </button>
+            )}
             {m.clean_team === 'Y' && <Pill tone="bg-amber-soft text-amber">Clean team</Pill>}
             {canEdit && <button onClick={() => setConfirm(m.member_id)} className="rounded p-1 text-ink-muted hover:bg-rose-soft hover:text-rose" aria-label={`Remove ${m.full_name}`}><Trash2 size={14} /></button>}
           </li>
@@ -155,7 +182,7 @@ export function TeamPanel({ open, detail, onClose, onSaved }: { open: boolean; d
           <Button className="mt-3" variant="primary" icon={<UserPlus size={14} />} onClick={add} loading={busy} disabled={!userId}>Add to team</Button>
         </div>
       ) : <p className="mt-4 text-[12.5px] text-ink-muted">Only the engagement partner or manager can change the team.</p>}
-      <ConfirmDialog open={!!confirm} title="Remove from the team?" confirmLabel="Remove" body="They lose access to this project straight away." onCancel={() => setConfirm(null)} onConfirm={() => confirm && remove(confirm)} />
+      <ConfirmDialog open={!!confirm} title="Remove from the team?" confirmLabel="Remove" body="They lose access to this project straight away. Their pending access requests here are cancelled and any extra access is revoked." onCancel={() => setConfirm(null)} onConfirm={() => confirm && remove(confirm)} />
     </SidePanel>
   );
 }
