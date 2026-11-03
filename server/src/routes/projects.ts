@@ -18,6 +18,7 @@ import { withdrawProjectAccess } from '../services/approvals';
 import { grantable, grantState, permissionLabel } from '../../../shared/access';
 import { isOverdue, rollupProject, today } from '../services/rollup';
 import { assertOpen, byOrder, pickFields, userIndex } from './helpers';
+import { syncFundingGap } from '../services/finance';
 
 const optStr = z.string().optional().nullable();
 const optNum = z.coerce.number().optional().nullable();
@@ -211,6 +212,8 @@ export function projectsRouter(db: Db): Router {
     if (patch.status === 'Closed') throw new HttpError(400, 'Use the close-out flow to close a project.', 'VALIDATION');
     delete patch.rag; // computed
     await db.update('projects', project.project_id, patch, auth.user.user_id);
+    // v1.4: once cost or funding lines exist, the recorded funding gap follows them (and the one-time cost estimate).
+    if (FIN_FIELDS.some((f) => f in patch)) await syncFundingGap(db, project.project_id, auth.user.user_id);
     await audit(db, auth, 'project.update', { type: 'project', id: project.project_id, projectId: project.project_id, details: patch });
     res.json(await projectDetail(db, auth, project.project_id));
   }));

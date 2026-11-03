@@ -8,15 +8,22 @@ import type { FinancingRequest, FinancingRequestRow, GapAnalysis, Project, User 
 import { bankByCode, type DemoBank } from '../../../shared/finance';
 import { geminiConfigured, geminiJson } from '../ai/gemini';
 import { fmtMoney, usesOnlyFigures, allowedFigures } from './financeGap';
+import { rowCode } from './grants';
 
+/**
+ * Who may do what with bank requests (one rule, used by the server and shown in the UI):
+ *  - draft / save / mark "RM replied": finance.view AND Partner or Manager on this project (acting roles count);
+ *  - send / term sheet / decline: the same seniority AND finance.edit (normally the Engagement Partner).
+ */
 export function bankPerms(auth: AuthContext, project: Project) {
   const closed = project.status === 'Closed';
-  const view = auth.actions.includes('finance.view');
-  const canDraft = view && ['PARTNER', 'MANAGER'].includes(auth.code) && !closed;
-  const canSend = auth.actions.includes('finance.edit') && !closed;
+  const code = rowCode(auth, project.project_id);
+  const senior = code === 'PARTNER' || code === 'MANAGER';
+  const canDraft = auth.actions.includes('finance.view') && senior && !closed;
+  const canSend = canDraft && auth.actions.includes('finance.edit');
   const reason = closed ? 'This project is closed.' : canSend ? undefined : canDraft
-    ? 'You can draft and save requests. Only the Engagement Partner (finance editor) marks them as sent, records term sheets or declines.'
-    : 'Only Engagement Partners and Managers can draft financing requests; you can follow their progress here.';
+    ? 'You can draft and save requests. Only a Partner or Manager who can also edit finance (normally the Engagement Partner) marks them as sent, records term sheets or declines.'
+    : 'Only Partners and Managers on this project (including acting roles) can draft financing requests; you can follow their progress here.';
   return { canDraft, canSend, reason };
 }
 
@@ -77,8 +84,15 @@ export function offlineBankDraft(project: Project, gap: GapAnalysis, auth: AuthC
   return { subject, body };
 }
 
-const EMAIL_RE = /[\w.+-]+@[\w-]+(\.[\w-]+)+/;
-const PHONE_RE = /\+?\d[\d\s().-]{7,}\d/;
+export const EMAIL_RE = /[\w.+-]+@[\w-]+(\.[\w-]+)+/;
+export const PHONE_RE = /\+?\d[\d\s().-]{7,}\d/g;
+/** Contact details a bank email must never carry (it goes outside the firm). Dates and money amounts are not phone numbers. */
+export function contactDetailIn(text?: string | null): 'email address' | 'phone number' | null {
+  if (!text) return null;
+  if (EMAIL_RE.test(text)) return 'email address';
+  for (const mt of text.match(PHONE_RE) ?? []) if ((mt.match(/\d/g) ?? []).length >= 10) return 'phone number';
+  return null;
+}
 
 /** Server-side draft: Gemini when a key is configured (figures only, validated), otherwise the offline template. */
 export async function draftBankEmail(project: Project, gap: GapAnalysis, auth: AuthContext, input: BankDraftInput): Promise<BankDraft> {
@@ -106,7 +120,7 @@ export async function draftBankEmail(project: Project, gap: GapAnalysis, auth: A
     { temperature: 0.3 },
   );
   const ok = g && typeof g.data?.subject === 'string' && typeof g.data?.body === 'string'
-    && g.data.body.includes(project.code_name) && !EMAIL_RE.test(g.data.body) && !PHONE_RE.test(g.data.body)
+    && g.data.body.includes(project.code_name) && !contactDetailIn(g.data.body) && !contactDetailIn(g.data.subject)
     && usesOnlyFigures(`${g.data.subject} ${g.data.body}`, [...allowedFigures(gap), input.amount]);
   if (!ok) return { ...offline, mode: 'offline', notes };
   return { subject: g!.data.subject.slice(0, 240), body: g!.data.body, mode: g!.model, notes };

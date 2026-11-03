@@ -96,9 +96,12 @@ export function analyseGap(input: GapInput): GapAnalysis {
 
   const byKind = (k: LineKind) => lines.filter((c) => kindOf(c) === k).reduce((s, c) => s + n(c.amount), 0);
   const usesFromLines = lines.reduce((s, c) => s + n(c.amount), 0);
-  const mixRaw = { seller: byKind('Seller'), buyer: byKind('Buyer'), shared: byKind('Shared'), untagged: byKind('Untagged') };
+  // A partial breakdown never shrinks the need: the part of the estimate not yet broken into lines stays in uses (no payer agreed).
+  const unallocated = lines.length ? Math.max(0, estimate - usesFromLines) : 0;
+  const usesAll = usesFromLines + unallocated;
+  const mixRaw = { seller: byKind('Seller'), buyer: byKind('Buyer'), shared: byKind('Shared'), untagged: byKind('Untagged') + unallocated };
   const pctOf = (v: number, tot: number) => (tot > 0 ? v / tot : 0);
-  const mix = { ...mixRaw, taggedPct: Math.round(pctOf(mixRaw.seller + mixRaw.buyer, usesFromLines) * 100), sharedPct: Math.round(pctOf(mixRaw.shared + mixRaw.untagged, usesFromLines) * 100) };
+  const mix = { ...mixRaw, taggedPct: Math.round(pctOf(mixRaw.seller + mixRaw.buyer, usesAll) * 100), sharedPct: Math.round(pctOf(mixRaw.shared + mixRaw.untagged, usesAll) * 100) };
 
   const base = {
     currency: cur, securedSeller, securedBuyer, pipelineSeller, pipelineBuyer, pipeline, recordedGap, oneTimeEstimate: estimate,
@@ -125,15 +128,20 @@ export function analyseGap(input: GapInput): GapAnalysis {
   }
 
   // ---- full analysis ----
-  const uses = usesFromLines;
+  const uses = usesAll;
   const gap = Math.max(0, uses - secured);
+  const UNALLOC = '__unallocated__';
+  const items: CostItem[] = unallocated > 0
+    ? [...lines, { cost_id: UNALLOC, project_id: project.project_id, category: 'Contingency', description: 'Unallocated estimate', amount: unallocated, status: 'Planned', created_at: '', is_deleted: 'N' } as unknown as CostItem]
+    : lines;
   const gapAfterPipeline = Math.max(0, gap - pipeline);
   const usageOf = (c: CostItem) => (c.buyer_usage_pct == null || (c.buyer_usage_pct as unknown) === '' ? null : clamp(n(c.buyer_usage_pct), 0, 100));
   const assumptions: string[] = [];
-  const sharedLines = lines.filter((c) => ['Shared', 'Untagged'].includes(kindOf(c)));
-  const noUsage = sharedLines.filter((c) => usageOf(c) == null);
+  const sharedLines = items.filter((c) => ['Shared', 'Untagged'].includes(kindOf(c)));
+  const noUsage = sharedLines.filter((c) => usageOf(c) == null && c.cost_id !== UNALLOC);
   const untaggedLines = lines.filter((c) => kindOf(c) === 'Untagged');
   if (noUsage.length) assumptions.push(`${noUsage.length} shared or untagged line${noUsage.length === 1 ? ' has' : 's have'} no buyer usage %; ${GAP_RULES.defaultUsagePct}% is assumed.`);
+  if (unallocated > 0) assumptions.push(`${m(unallocated)} of the ${m(estimate)} one-time cost estimate is not yet broken into cost lines; it is kept in the uses as "Unallocated estimate" with no payer agreed.`);
   if (untaggedLines.length) assumptions.push(`${untaggedLines.length} line${untaggedLines.length === 1 ? ' has' : 's have'} no payer agreed; treated as shared.`);
   assumptions.push('Seller-side funding = SPA seller contribution and escrow / holdback; everything else is buyer-side. Pipeline is not counted as secured.');
 
@@ -143,7 +151,7 @@ export function analyseGap(input: GapInput): GapAnalysis {
     const def = GAP_SCENARIOS.find((s) => s.key === key)!;
     const evidence: GapEvidence[] = [];
     let seller = 0;
-    for (const c of lines) {
+    for (const c of items) {
       const a = n(c.amount);
       const k = kindOf(c);
       const u = usageOf(c);
@@ -160,7 +168,8 @@ export function analyseGap(input: GapInput): GapAnalysis {
       }
       const s = Math.round(a * f);
       seller += s;
-      evidence.push({ cost_id: c.cost_id, label: `${c.category}${c.description ? `: ${c.description}` : ''}`, payer: c.payer ?? null, amount: a, rule, seller: s, buyer: a - s });
+      const un = c.cost_id === UNALLOC;
+      evidence.push({ cost_id: un ? undefined : c.cost_id, label: un ? `Unallocated estimate (${m(estimate)} estimate minus ${m(usesFromLines)} in cost lines)` : `${c.category}${c.description ? `: ${c.description}` : ''}`, payer: un ? null : c.payer ?? null, amount: a, rule, seller: s, buyer: a - s });
     }
     const notes: string[] = [];
     if (key === 'avoided') {
@@ -250,6 +259,7 @@ export function analyseGap(input: GapInput): GapAnalysis {
   const nextSteps: GapNextStep[] = [];
   if (rec) {
     nextSteps.push({ text: `Take the ${rec.name.toLowerCase()} split (seller ${m(rec.sellerShare)} / buyer ${m(rec.buyerShare)}) to the control board and record the agreed basis on each cost line.`, owner: partner, role: 'Partner' });
+    if (unallocated > 0) nextSteps.push({ text: `Break the remaining ${m(unallocated)} of the estimate into cost lines with who pays.`, owner: manager, role: 'Manager' });
     if (untaggedLines.length) nextSteps.push({ text: `Agree who pays on ${untaggedLines.length} untagged cost line${untaggedLines.length === 1 ? '' : 's'} (${m(mixRaw.untagged)}).`, owner: manager, role: 'Manager' });
     if (noUsage.length) nextSteps.push({ text: `Confirm buyer usage % with the client on ${noUsage.length} shared line${noUsage.length === 1 ? '' : 's'} (50% assumed today).`, owner: manager, role: 'Manager' });
     if (rec.capExcess > 0) nextSteps.push({ text: `Raise the SPA cap${clause ? ` (${clause})` : ''} with the seller: ${m(rec.capExcess)} of the seller share is above it.`, owner: partner, role: 'Partner' });

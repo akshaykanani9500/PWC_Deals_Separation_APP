@@ -19,7 +19,7 @@ import { bankByCode } from '../../../shared/finance';
 import { auditAi } from '../ai/audit';
 import { geminiConfigured, geminiGenerate } from '../ai/gemini';
 import { allowedFigures, fmtMoney, offlineGapSummary, usesOnlyFigures } from '../services/financeGap';
-import { bankPerms, decorateRequest, draftBankEmail } from '../services/financeBank';
+import { bankPerms, contactDetailIn, decorateRequest, draftBankEmail } from '../services/financeBank';
 import { ah, HttpError } from '../errors';
 import { ensureAction } from '../middleware/auth';
 import { assertProjectAccess } from '../services/access';
@@ -156,7 +156,7 @@ export function financeRouter(db: Db): Router {
     if (body.seller_committed) funds.push({ project_id: project.project_id, source_type: 'Seller contribution (SPA)', provider: 'Seller, per SPA', amount: body.seller_committed, status: 'Committed', purpose: 'Seller contribution agreed in the sale agreement.', owner_user_id: auth.user.user_id });
     if (body.buyer_committed) funds.push({ project_id: project.project_id, source_type: 'Buyer balance-sheet cash', provider: 'Buyer treasury', amount: body.buyer_committed, status: 'Committed', purpose: 'Approved separation budget.', owner_user_id: auth.user.user_id });
     if (funds.length) await db.insertMany('funding_sources', funds, auth.user.user_id);
-    if (body.cost_lines !== undefined || funds.length) await syncFundingGap(db, project.project_id, auth.user.user_id);
+    await syncFundingGap(db, project.project_id, auth.user.user_id);
     await audit(db, auth, 'finance.setup', { type: 'project', id: project.project_id, projectId: project.project_id, details: { fields: Object.keys(patch), cost_lines: created.length, funding_lines: funds.length } });
     const fresh = (await db.get<Project>('projects', project.project_id))!;
     res.json(await buildFinanceWorkspace(db, auth, fresh));
@@ -175,6 +175,13 @@ export function financeRouter(db: Db): Router {
       throw new HttpError(403, p.reason || 'Your role cannot do this.', 'FORBIDDEN');
     }
     return project;
+  }
+  /** Bank emails go outside the firm: no email addresses or phone numbers (client or anyone else) in what we save. */
+  function assertNoContacts(body: { email_subject?: string | null; email_body?: string | null; purpose?: string | null; notes?: string | null }) {
+    for (const [k, label] of [['email_subject', 'subject'], ['email_body', 'email body'], ['purpose', 'purpose']] as const) {
+      const hit = contactDetailIn(body[k]);
+      if (hit) throw new HttpError(400, `Remove the ${hit} from the ${label}. Bank emails must not contain email addresses or phone numbers; the RM's contact details are added by your mail app.`, 'VALIDATION');
+    }
   }
   async function loadRequest(project: Project, rid: string) {
     const row = await db.get<FinancingRequest>('financing_requests', rid);
@@ -201,6 +208,7 @@ export function financeRouter(db: Db): Router {
     const { auth } = req as AuthedRequest;
     const project = await bankGuard(req as AuthedRequest, 'draft');
     const body = bankBody.extend({ email_subject: z.string().max(240).optional().nullable(), email_body: z.string().max(8000).optional().nullable(), next_follow_up: isoDate, notes: optStr }).parse(req.body);
+    assertNoContacts(body);
     const bank = bankByCode(body.bank_code)!;
     const now = new Date().toISOString();
     const row = await db.insert<FinancingRequest>('financing_requests', {
@@ -219,6 +227,7 @@ export function financeRouter(db: Db): Router {
       email_subject: z.string().max(240).optional().nullable(), email_body: z.string().max(8000).optional().nullable(), next_follow_up: isoDate, notes: optStr,
     }).parse(req.body) as Record<string, unknown>;
     for (const k of Object.keys(patch)) if (patch[k] === undefined) delete patch[k];
+    assertNoContacts(patch as Record<string, string | null>);
     const content = ['product', 'amount', 'purpose', 'email_subject', 'email_body'].filter((k) => k in patch);
     if (content.length && row.status !== 'Draft') throw new HttpError(409, 'Only a draft can be changed; this request has already been sent.', 'VALIDATION');
     const updated = await db.update<FinancingRequest>('financing_requests', row.request_id, { ...patch, last_update_at: new Date().toISOString() }, auth.user.user_id);
@@ -241,7 +250,7 @@ export function financeRouter(db: Db): Router {
       const p = bankPerms(auth, project);
       const sendOnly = ['Sent', 'Term sheet', 'Declined'].includes(body.status) && !p.canSend;
       await audit(db, auth, 'access.denied', { type: 'financing_request', id: row.request_id, projectId: project.project_id, details: { needed: sendOnly ? 'finance.edit' : `status ${row.status} -> ${body.status}` } });
-      if (sendOnly || !p.canDraft) throw new HttpError(403, sendOnly ? 'Only a finance editor (the Engagement Partner) can mark a request as sent, record a term sheet or a decline.' : (p.reason || 'Your role cannot do this.'), 'FORBIDDEN');
+      if (sendOnly || !p.canDraft) throw new HttpError(403, sendOnly ? 'Only a Partner or Manager on this project who can also edit finance (normally the Engagement Partner) can mark a request as sent, record a term sheet or a decline.' : (p.reason || 'Your role cannot do this.'), 'FORBIDDEN');
       throw new HttpError(409, `A request that is "${row.status}" cannot move to "${body.status}".`, 'VALIDATION');
     }
     const now = new Date().toISOString();

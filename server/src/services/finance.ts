@@ -139,10 +139,15 @@ export async function buildFinanceWorkspace(db: Db, auth: AuthContext, project: 
     costItems: costItems.map((c) => ({ ...c, stage_name: stageName.get(c.stage_id || ''), activity_name: actName.get(c.activity_id || '') }))
       .sort((a, b) => n(b.amount) - n(a.amount)),
     fundingSources: funding.map((f) => ({ ...f, owner_name: nameOf(f.owner_user_id) })).sort((a, b) => n(b.amount) - n(a.amount)),
-    sourcesUses: {
-      uses, byPayer: [...payers.entries()].map(([payer, total]) => ({ payer, total })),
-      usesTotal, secured, pipeline, unfunded: Math.max(0, usesTotal - secured), recordedGap: n(project.funding_gap),
-    },
+    sourcesUses: (() => {
+      // v1.4: the part of the one-time estimate not yet broken into cost lines stays in the uses (same as the gap analysis).
+      const unalloc = costItems.length ? Math.max(0, n(project.one_time_cost) - usesTotal) : 0;
+      const allUses = unalloc ? [...uses, { category: 'Unallocated estimate', planned: unalloc, committed: 0, spent: 0, total: unalloc }] : uses;
+      const total = usesTotal + unalloc;
+      const byPayer = [...payers.entries()].map(([payer, t]) => ({ payer, total: t }));
+      if (unalloc) byPayer.push({ payer: 'Unallocated estimate', total: unalloc });
+      return { uses: allUses, byPayer, usesTotal: total, secured, pipeline, unfunded: Math.max(0, total - secured), recordedGap: n(project.funding_gap) };
+    })(),
     billing: {
       budget: n(project.fee_budget), invoiced, paid, outstanding: invoiced - paid, overdue: sumWhere((i) => i.status === 'Overdue'),
       // Closed projects have no work-in-progress: final billing is done and any remainder was written off at close.
@@ -175,11 +180,12 @@ export async function syncFundingGap(db: Db, projectId: string, actor: string): 
   const [costs, funding, project] = await Promise.all([
     db.find<CostItem>('cost_items', (c) => c.project_id === projectId), db.find<FundingSource>('funding_sources', (f) => f.project_id === projectId), db.get<Project>('projects', projectId),
   ]);
-  if (!project || !costs.length) return;
-  const uses = costs.reduce((s, c) => s + n(c.amount), 0);
-  const secured = funding.filter((f) => SECURED_STATUSES.includes(f.status)).reduce((s, f) => s + n(f.amount), 0);
-  const gap = Math.max(0, uses - secured);
-  if (n(project.funding_gap) !== gap) await db.update('projects', projectId, { funding_gap: gap || null }, actor);
+  if (!project) return;
+  // Same rules as the Gap & split tab (analyseGap): lines plus any unallocated estimate, minus secured funding.
+  // With no lines and no funding lines, the gap typed on the project is the only source and is kept as it is.
+  const a = analyseGap({ project, costItems: costs, funding, tsaRunRate: 0 });
+  if (a.state === 'no-data') { if (funding.length && project.funding_gap) await db.update('projects', projectId, { funding_gap: null }, actor); return; }
+  if (n(project.funding_gap) !== a.gap) await db.update('projects', projectId, { funding_gap: a.gap || null }, actor);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

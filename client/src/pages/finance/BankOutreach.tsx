@@ -41,7 +41,13 @@ function RequestPanel({ w, bank, row, onClose, onChanged }: { w: FinanceWorkspac
   const toast = useToast();
   const c = cur(w);
   const pid = w.project.project_id;
-  const suggested = Math.round((w.gap.gapAfterPipeline || w.gap.gap) / 1000) * 1000;
+  // Suggest only what still has no source once the pipeline is counted; when the pipeline covers the gap, suggest nothing.
+  const suggested = Math.round(w.gap.gapAfterPipeline / 1000) * 1000;
+  const amountHint = suggested
+    ? `Suggested ${money(suggested, c)}: the part of the gap with no source after the options already in the pipeline`
+    : w.gap.gap > 0
+      ? `The pipeline (${money(w.gap.pipeline, c)}) already covers the ${money(w.gap.gap, c)} gap. Enter an amount only to compare a cheaper option.`
+      : 'The one-time cost is fully funded. Enter an amount only if you need headroom.';
   const [f, setF] = useState<Draft>(() => row ? {
     request_id: row.request_id, bank_code: row.bank_code, product: row.product, amount: String(row.amount ?? ''), purpose: row.purpose ?? '',
     email_subject: row.email_subject ?? '', email_body: row.email_body ?? '', next_follow_up: row.next_follow_up ?? '',
@@ -101,7 +107,7 @@ function RequestPanel({ w, bank, row, onClose, onChanged }: { w: FinanceWorkspac
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label={`Amount (${c}) *`} hint={suggested ? `Suggested ${money(suggested, c)}: the part of the gap with no source after the pipeline` : undefined}>
+          <Field label={`Amount (${c}) *`} hint={row ? undefined : amountHint}>
             <Input type="number" min={0} value={f.amount} disabled={readOnly} onChange={(e) => set('amount', e.target.value)} />
           </Field>
           <Field label="Product *">
@@ -223,30 +229,36 @@ export function AskABank({ w, onChanged }: { w: FinanceWorkspace; onChanged: () 
         </Select>
       )}>
         <div className="overflow-x-auto">
-          <table className="w-full text-[12.5px]">
-            <thead><tr><th className="th">Bank / RM</th><th className="th">Product</th><th className="th text-right">Amount</th><th className="th">Status</th><th className="th">Progress</th><th className="th">Sent</th><th className="th">Follow up</th><th className="th">Owner</th><th className="th"><span className="sr-only">Actions</span></th></tr></thead>
+          <table className="w-full table-fixed text-[12.5px]">
+            <colgroup><col className="w-[30%]" /><col className="w-[12%]" /><col className="w-[16%]" /><col className="w-[14%]" /><col className="w-[28%]" /></colgroup>
+            <thead><tr><th className="th">Request</th><th className="th text-right">Amount</th><th className="th">Status</th><th className="th">Dates</th><th className="th text-right">Actions</th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.request_id} aria-label={`Request ${r.request_id} to ${r.bank_name}`}>
-                  <td className="td"><div className="font-medium">{r.bank_name}</div><div className="text-[11.5px] text-ink-muted">{r.rm_name}{r.funding_id ? ` · funding line ${r.funding_status ?? ''}` : ''}</div></td>
-                  <td className="td">{r.product}</td>
-                  <td className="td num text-right font-medium">{money(r.amount, c)}</td>
-                  <td className="td"><Pill tone={statusTone[r.status]}>{r.status}</Pill></td>
-                  <td className="td"><Stepper status={r.status} /></td>
-                  <td className="td num">{r.sent_at ? date(r.sent_at) : '–'}</td>
-                  <td className="td num">{r.next_follow_up ? date(r.next_follow_up) : '–'}</td>
-                  <td className="td">{r.owner_name || '–'}</td>
-                  <td className="td whitespace-nowrap text-right">
-                    <Button size="sm" variant="ghost" icon={<Pencil size={14} />} onClick={() => setOpen({ bank: bankOf(r.bank_code), row: r })}>{r.can.edit ? 'Edit' : 'View'}</Button>
-                    {r.can.markSent && <Button size="sm" variant="ghost" icon={<Send size={14} />} loading={busy === r.request_id + 'Sent'} disabled={!r.email_body} disabledReason="Draft the email first" onClick={() => status(r, 'Sent', `Marked as sent to ${r.rm_name}; logged in the project emails`)}>Mark sent</Button>}
-                    {r.can.reply && <Button size="sm" variant="ghost" icon={<MessageSquareReply size={14} />} loading={busy === r.request_id + 'RM replied'} onClick={() => status(r, 'RM replied', 'Status updated: RM replied')}>RM replied</Button>}
-                    {r.can.termSheet && <Button size="sm" variant="ghost" icon={<FileCheck2 size={14} />} onClick={() => setTerm(r)}>Term sheet received</Button>}
-                    {r.can.decline && <Button size="sm" variant="ghost" icon={<XCircle size={14} />} loading={busy === r.request_id + 'Declined'} onClick={() => status(r, 'Declined', 'Status updated: declined')}>Declined</Button>}
-                    {r.can.withdraw && <Button size="sm" variant="ghost" icon={<Undo2 size={14} />} loading={busy === r.request_id + 'Withdrawn'} onClick={() => status(r, 'Withdrawn', 'Request withdrawn')}>Withdraw</Button>}
+                  <td className="td align-top">
+                    <div className="truncate font-medium" title={r.bank_name}>{r.bank_name}</div>
+                    <div className="truncate text-[11.5px] text-ink-muted">{r.product} · {r.rm_name}{r.owner_name ? ` · by ${r.owner_name}` : ''}</div>
+                    {r.funding_id && <div className="text-[11.5px] text-green">Funding line: {r.funding_status ?? 'linked'}</div>}
+                  </td>
+                  <td className="td num align-top text-right font-medium">{money(r.amount, c)}</td>
+                  <td className="td align-top"><Pill tone={statusTone[r.status]}>{r.status}</Pill><div className="mt-1.5"><Stepper status={r.status} /></div></td>
+                  <td className="td num align-top text-[11.5px]">
+                    <div><span className="text-ink-muted">Sent on </span>{r.sent_at ? date(r.sent_at) : '–'}</div>
+                    <div><span className="text-ink-muted">Follow up </span>{r.next_follow_up ? date(r.next_follow_up) : '–'}</div>
+                  </td>
+                  <td className="td align-top">
+                    <div className="flex flex-wrap justify-end gap-1">
+                      <Button size="sm" variant="ghost" icon={<Pencil size={14} />} onClick={() => setOpen({ bank: bankOf(r.bank_code), row: r })}>{r.can.edit ? 'Edit' : 'View'}</Button>
+                      {r.can.markSent && <Button size="sm" variant="ghost" icon={<Send size={14} />} loading={busy === r.request_id + 'Sent'} disabled={!r.email_body} disabledReason="Draft the email first" onClick={() => status(r, 'Sent', `Marked as sent to ${r.rm_name}; logged in the project emails`)}>Mark sent</Button>}
+                      {r.can.reply && <Button size="sm" variant="ghost" icon={<MessageSquareReply size={14} />} loading={busy === r.request_id + 'RM replied'} onClick={() => status(r, 'RM replied', 'Status updated: RM replied')}>RM replied</Button>}
+                      {r.can.termSheet && <Button size="sm" variant="ghost" icon={<FileCheck2 size={14} />} onClick={() => setTerm(r)}>Term sheet received</Button>}
+                      {r.can.decline && <Button size="sm" variant="ghost" icon={<XCircle size={14} />} loading={busy === r.request_id + 'Declined'} onClick={() => status(r, 'Declined', 'Status updated: declined')}>Declined</Button>}
+                      {r.can.withdraw && <Button size="sm" variant="ghost" icon={<Undo2 size={14} />} loading={busy === r.request_id + 'Withdrawn'} onClick={() => status(r, 'Withdrawn', 'Request withdrawn')}>Withdraw</Button>}
+                    </div>
                   </td>
                 </tr>
               ))}
-              {!rows.length && <tr><td colSpan={9} className="td text-ink-muted">No financing requests{filter ? ` with status ${filter}` : ' yet'}.</td></tr>}
+              {!rows.length && <tr><td colSpan={5} className="td text-ink-muted">No financing requests{filter ? ` with status ${filter}` : ' yet'}.</td></tr>}
             </tbody>
           </table>
         </div>

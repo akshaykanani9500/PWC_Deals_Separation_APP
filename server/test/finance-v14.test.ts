@@ -5,6 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { makeTestApp, USERS } from './helpers';
 import { analyseGap, similarLessons, usesOnlyFigures } from '../src/services/financeGap';
+import { bankPerms, contactDetailIn } from '../src/services/financeBank';
 import { SECURED_STATUSES } from '../../shared/finance';
 import type { CostItem, FundingSource, Project } from '../../shared/types';
 
@@ -248,5 +249,90 @@ describe('bank outreach', () => {
     expect(r.body.mode).toBe('offline');
     expect(r.body.text).toMatch(/Project Rioja/);
     expect(r.body.text).toMatch(/1\.74M/);
+  });
+});
+
+// ---------------- v1.4 fix round ----------------
+describe('partial cost breakdown keeps the estimate', () => {
+  it('uses max(lines, estimate) with an Unallocated estimate evidence row', () => {
+    const a = analyseGap({ project: proj({ one_time_cost: 2000000 }), costItems: [cost('C1', 500000, 'Seller')], funding: [fund('Buyer balance-sheet cash', 800000)], tsaRunRate: 0 });
+    expect(a.state).toBe('gap');
+    expect(a.uses).toBe(2000000);
+    expect(a.gap).toBe(1200000);
+    for (const s of a.scenarios) {
+      const un = s.evidence.find((e) => e.label.startsWith('Unallocated estimate'));
+      expect(un?.amount).toBe(1500000);
+      expect(un?.cost_id).toBeUndefined();
+      expect(s.sellerShare + s.buyerShare).toBe(2000000);
+    }
+    expect(a.nextSteps.some((x) => /remaining USD 1.5M/.test(x.text))).toBe(true);
+    // lines above the estimate win
+    expect(analyseGap({ project: proj({ one_time_cost: 100 }), costItems: [cost('C1', 500, 'Seller')], funding: [], tsaRunRate: 0 }).uses).toBe(500);
+  });
+
+  it('keeps projects.funding_gap in sync: estimate only, partial lines, lines removed', async () => {
+    const api = t.as(USERS.rajiv);
+    const pid = (await api.post('/api/projects', { code_name: 'Project Garnet', one_time_cost: 1000000 })).body.project.project_id;
+    const gap = async () => (await api.get(`/api/projects/${pid}`)).body.project.funding_gap ?? 0;
+    await api.post(`/api/projects/${pid}/finance/setup`, { buyer_committed: 400000 });
+    expect(await gap()).toBe(600000); // estimate only, with funding
+    const line = await api.post(`/api/projects/${pid}/finance/costs`, { category: 'Data migration', amount: 300000, status: 'Planned', payer: 'Buyer' });
+    expect(await gap()).toBe(600000); // partial breakdown does not erase the gap
+    expect((await api.get(`/api/projects/${pid}/finance`)).body.sourcesUses.usesTotal).toBe(1000000);
+    await api.post(`/api/projects/${pid}/finance/costs`, { category: 'IT infrastructure', amount: 1200000, status: 'Planned', payer: 'Seller' });
+    expect(await gap()).toBe(1100000); // lines now exceed the estimate
+    await api.patch(`/api/projects/${pid}`, { one_time_cost: 2000000 });
+    expect(await gap()).toBe(1600000);
+    await api.del(`/api/projects/${pid}/finance/costs/${line.body.cost_id}`);
+    expect(await gap()).toBe(1600000); // estimate still governs
+    const dash = (await t.as(USERS.exec).get('/api/dashboard')).body;
+    expect(dash.kpis.fundingGap).toBeGreaterThanOrEqual(1600000);
+  });
+});
+
+describe('bank-request rights follow the role on the project', () => {
+  const p = proj({ project_id: 'PRJ-X' });
+  const auth = (code: string, actions: string[], acting?: string) => ({ code, actions, actingCode: acting, grantProjectId: acting ? 'PRJ-X' : null, user: { user_id: 'U' } } as any);
+  it('drafting needs Partner/Manager (acting counts); sending also needs finance.edit', () => {
+    expect(bankPerms(auth('PARTNER', ['finance.view', 'finance.edit']), p)).toMatchObject({ canDraft: true, canSend: true });
+    expect(bankPerms(auth('MANAGER', ['finance.view']), p)).toMatchObject({ canDraft: true, canSend: false });
+    expect(bankPerms(auth('ANALYST', ['finance.view'], 'MANAGER'), p)).toMatchObject({ canDraft: true, canSend: false });
+    expect(bankPerms(auth('MANAGER', ['finance.view', 'finance.edit'], 'PARTNER'), p)).toMatchObject({ canDraft: true, canSend: true });
+    expect(bankPerms(auth('LEAD', ['finance.view', 'finance.edit']), p)).toMatchObject({ canDraft: false, canSend: false });
+    expect(bankPerms(auth('ANALYST', ['finance.view']), p)).toMatchObject({ canDraft: false, canSend: false });
+    expect(bankPerms(auth('EXEC', ['finance.view']), p).canDraft).toBe(false);
+  });
+
+  it('an analyst acting as Engagement Manager on Rioja can draft there, not send', async () => {
+    const now = Date.now();
+    await t.db.insert('access_grants', {
+      project_id: RIOJA, grantee_user_id: USERS.aditya, permission_code: 'role.MANAGER', justification: 'Covering for the manager this month.',
+      duration_days: 30, status: 'Active', requested_by: USERS.rajiv, l1_approver_id: USERS.rajiv, l2_approver_id: USERS.fatima,
+      starts_at: new Date(now - 86400000).toISOString(), expires_at: new Date(now + 20 * 86400000).toISOString(),
+    });
+    const r = await t.as(USERS.aditya).post(`/api/projects/${RIOJA}/finance/bank-requests`, { bank_code: 'BANK2', product: 'Bridge loan', amount: 100000 });
+    expect(r.status).toBe(201);
+    expect(r.body.can.markSent).toBe(false);
+    expect((await t.as(USERS.aditya).post(`/api/projects/${RIOJA}/finance/bank-requests/${r.body.request_id}/status`, { status: 'Sent' })).status).toBe(403);
+  });
+});
+
+describe('saved bank emails carry no contact details', () => {
+  it('detects emails and phone numbers but not dates or amounts', () => {
+    expect(contactDetailIn('Call me on +91 98200 11201')).toBe('phone number');
+    expect(contactDetailIn('write to kenji@client-rioja.example')).toBe('email address');
+    expect(contactDetailIn('By 2026-11-30, about USD 1,740,000 (USD 174000).')).toBeNull();
+  });
+  it('rejects them on create and update with 400', async () => {
+    const api = t.as(USERS.daniel);
+    const base = { bank_code: 'BANK1', product: 'Bridge loan', amount: 174000 };
+    const bad = await api.post(`/api/projects/${RIOJA}/finance/bank-requests`, { ...base, email_subject: 'Enquiry', email_body: 'Reach the CFO at cfo@rioja-buyer.example' });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toMatch(/email address/);
+    const ok = await api.post(`/api/projects/${RIOJA}/finance/bank-requests`, { ...base, email_subject: 'Enquiry', email_body: 'Draft for 2026-11-30.' });
+    expect(ok.status).toBe(201);
+    const up = await api.patch(`/api/projects/${RIOJA}/finance/bank-requests/${ok.body.request_id}`, { email_body: 'Call Kenji on +1 408 555 0126' });
+    expect(up.status).toBe(400);
+    expect(up.body.error).toMatch(/phone number/);
   });
 });
