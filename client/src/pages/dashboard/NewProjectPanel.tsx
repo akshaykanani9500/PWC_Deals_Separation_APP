@@ -52,7 +52,8 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
     setF((s) => ({
       ...s,
       description: s.description || (typeof d.description === 'string' ? d.description : s.description),
-      code_name: s.code_name || (typeof d.code_name === 'string' ? d.code_name : s.code_name),
+      // the server returns the project name as `name` (older drafts used `code_name`)
+      code_name: s.code_name || (typeof d.name === 'string' ? d.name : typeof d.code_name === 'string' ? d.code_name : s.code_name),
     }));
     setAiMeta({ mode: res.mode, rationale: res.rationale, sources: res.sources });
   }
@@ -118,7 +119,7 @@ export default function NewProjectPanel({ open, onClose }: { open: boolean; onCl
         <div className="border-b border-line px-4 py-3">
           <AiSuggestButton
             label={plan ? 'Suggest again' : 'Suggest a plan from past deals'}
-            request={{ kind: 'project', hints: { deal_type: f.deal_type, industry: f.industry, name: f.code_name, description: f.description }, current: { ...f } }}
+            request={{ kind: 'project', hints: { deal_type: f.deal_type, industry: f.industry, name: f.code_name, description: f.description }, current: { ...f } /* every typed field; the server merges them (typed values win) */ }}
             onApply={applySuggestion}
           />
         </div>

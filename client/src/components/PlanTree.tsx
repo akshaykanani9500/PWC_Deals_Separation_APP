@@ -6,7 +6,7 @@ import { useState } from 'react';
 import clsx from 'clsx';
 import { ChevronRight, Plus, Trash2 } from 'lucide-react';
 
-export interface PlanTask { key: string; include: boolean; title: string; priority?: string; day1_critical?: 'Y' | 'N' }
+export interface PlanTask { key: string; include: boolean; title: string; priority?: string; day1_critical?: 'Y' | 'N'; effort_hours?: number; description?: string }
 export interface PlanActivity { key: string; include: boolean; name: string; description?: string; priority?: string; tasks: PlanTask[] }
 export interface PlanStage { key: string; include: boolean; name: string; description?: string; gate_criteria?: string; activities: PlanActivity[] }
 
@@ -18,6 +18,8 @@ const yn = (v: unknown): 'Y' | 'N' => (v === true || v === 'Y' || v === 'y' || v
 export function toPlanTasks(raw: unknown): PlanTask[] {
   return (Array.isArray(raw) ? raw : []).map((t: any) => ({
     key: key(), include: true, title: str(t?.title ?? t?.name), priority: t?.priority ? str(t.priority) : undefined, day1_critical: yn(t?.day1_critical),
+    effort_hours: Number.isFinite(Number(t?.effort_hours)) && t?.effort_hours != null ? Number(t.effort_hours) : undefined,
+    description: t?.description ? str(t.description) : undefined,
   })).filter((t) => t.title);
 }
 export function toPlanActivities(raw: unknown): PlanActivity[] {
@@ -34,7 +36,8 @@ export function toPlanStages(raw: unknown): PlanStage[] {
 }
 
 export const tasksPayload = (ts: PlanTask[]) => ts.filter((t) => t.include && t.title.trim())
-  .map(({ title, priority, day1_critical }) => ({ title: title.trim(), ...(priority ? { priority } : {}), day1_critical: day1_critical ?? 'N' }));
+  .map(({ title, priority, day1_critical, effort_hours, description }) => ({ title: title.trim(), ...(priority ? { priority } : {}), day1_critical: day1_critical ?? 'N',
+    ...(effort_hours != null ? { effort_hours } : {}), ...(description ? { description } : {}) }));
 export const activitiesPayload = (as: PlanActivity[]) => as.filter((a) => a.include && a.name.trim())
   .map((a) => ({ name: a.name.trim(), ...(a.description ? { description: a.description } : {}), ...(a.priority ? { priority: a.priority } : {}), tasks: tasksPayload(a.tasks) }));
 export const stagesPayload = (ss: PlanStage[]) => ss.filter((s) => s.include && s.name.trim())
@@ -71,6 +74,7 @@ export function TaskList({ tasks, onChange, depth = 0 }: { tasks: PlanTask[]; on
             <input className={inlineInput} value={t.title} onChange={(e) => set(i, { title: e.target.value })} aria-label="Task title" />
             {t.day1_critical === 'Y' && <span className="shrink-0 rounded bg-rose-soft px-1 text-[10.5px] font-medium text-rose">Day-1</span>}
             {t.priority && <span className="shrink-0 text-[11px] text-ink-muted">{t.priority}</span>}
+            {t.effort_hours != null && <span className="num shrink-0 text-[11px] text-ink-muted">{t.effort_hours} h</span>}
           </div>
         </RowShell>
       ))}

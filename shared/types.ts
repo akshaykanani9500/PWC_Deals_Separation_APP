@@ -241,7 +241,7 @@ export interface PikuResponse {
 }
 
 /** AI "Get suggestion" in edit side panels */
-export type SuggestKind = 'project' | 'stages' | 'stage' | 'activities' | 'activity' | 'tasks' | 'task';
+export type SuggestKind = 'project' | 'stages' | 'stage' | 'activities' | 'activity' | 'tasks' | 'task' | 'project_fields';
 
 export interface SuggestRequest {
   kind: SuggestKind;
@@ -258,8 +258,13 @@ export interface SuggestResponse {
   rationale: string;
   /** knowledge items / past patterns used */
   sources: { id: string; label: string }[];
-  /** Draft values. For list kinds: an array of rows to add. For single kinds: field -> value. */
+  /** Draft values. For list kinds: an array of rows to add. For single kinds: field -> value. (v1.4: = the recommended option) */
   draft: Record<string, unknown> | Record<string, unknown>[];
+  /** v1.4: 2-3 alternative options (the recommended one is also `draft`). Older clients can ignore it. */
+  options?: SuggestOption[];
+  recommendedId?: string;
+  /** v1.4: what the engine picked up from the typed form values (keywords, industry, residency ...) */
+  inputSignals?: { id: string; label: string; matched: string[] }[];
 }
 
 export interface SummaryResponse { summary: string; mode: string; highlights: string[]; risks: string[]; nextSteps: string[] }
@@ -302,3 +307,73 @@ export interface AccessRequestRow extends AccessGrant {
   can: { approveL1: boolean; approveL2: boolean; reject: boolean; cancel: boolean; revoke: boolean };
   why?: string;
 }
+
+// ---- v1.4 C: AI, comms dialogs, widgets ----
+
+/** One alternative AI suggestion (e.g. "Tailored to your inputs", "Standard playbook", "Lean / fast-track"). */
+export interface SuggestOption {
+  id: string;
+  label: string;
+  rationale: string;
+  recommended?: boolean;
+  draft: Record<string, unknown> | Record<string, unknown>[];
+  /** Deduplicated knowledge items / playbook actually used by this option */
+  sources: { id: string; label: string }[];
+  /** Short phrases saying what came from the user's own inputs, e.g. "SAP S/4: ERP clone / carve-out activities" */
+  fromInputs: string[];
+  stats?: { stages?: number; activities?: number; tasks?: number; hours?: number; fields?: number };
+  /** project_fields kind: why each field is suggested */
+  fieldReasons?: Record<string, string>;
+}
+
+/** A person the meeting / email / call dialogs may address (already permission-filtered and masked by the server). */
+export interface CommsPerson {
+  id: string; name: string; kind: 'team' | 'contact'; role?: string; org?: string; side?: string;
+  email?: string; phone?: string; emailMasked?: boolean; phoneMasked?: boolean;
+}
+export interface CommsContext {
+  ref: { project_id: string; stage_id?: string | null; activity_id?: string | null; task_id?: string | null; label: string; code_name: string };
+  people: CommsPerson[];
+  /** May save meetings / emails / calls to the project log (notes.add, project open, not the client view) */
+  canSave: boolean;
+  canEmail: boolean;
+  saveReason?: string;
+}
+export interface MeetingSuggestion {
+  title: string; agenda: string[]; attendees: string[]; attendeeIds?: string[]; suggestedSlots: string[];
+  /** v1.4: machine-readable slots (ISO start + label) */
+  slots?: { label: string; start: string }[];
+  durationMin?: number; mode: string;
+}
+export interface CommsLogRequest {
+  scope: 'project' | 'stage' | 'activity' | 'task'; id: string;
+  channel: 'Meeting' | 'Email' | 'Call';
+  subject: string; body?: string; to_name?: string; occurred_at?: string; duration_min?: number; contact_id?: string | null;
+  /** true when the text started as an AI draft (the audit entry is marked AI-assisted) */
+  aiDrafted?: boolean;
+}
+
+/** Custom dashboard widgets: a spec validated against the server-side catalogue (never code or SQL). */
+export type WidgetMetric =
+  | 'task_count' | 'open_tasks' | 'overdue_tasks' | 'blocked_tasks' | 'day1_open' | 'hours_planned' | 'pct_complete_avg'
+  | 'projects_count' | 'fee_budget' | 'fee_billed' | 'tsa_run_rate' | 'funding_gap';
+export type WidgetGroupBy = 'none' | 'project' | 'stage' | 'status' | 'priority' | 'assignee' | 'stage_owner' | 'industry' | 'deal_type' | 'rag' | 'month';
+export type WidgetChart = 'kpi' | 'bar' | 'hbar' | 'pie' | 'line' | 'table';
+export interface WidgetSpec {
+  title: string;
+  metric: WidgetMetric;
+  groupBy: WidgetGroupBy;
+  chart: WidgetChart;
+  filter?: { status?: string; projectId?: string; mine?: boolean; atRisk?: boolean };
+}
+export interface WidgetData {
+  spec: WidgetSpec;
+  unit: 'count' | 'money' | 'percent' | 'hours';
+  currency?: string;
+  total: number;
+  rows: { key: string; label: string; value: number }[];
+  note?: string;
+}
+export type WidgetSuggestResponse =
+  | { possible: true; spec: WidgetSpec; explanation: string; mode: string }
+  | { possible: false; reason: string; closestAlternatives: { spec: WidgetSpec; explanation: string }[]; suggestion: string; mode: string };

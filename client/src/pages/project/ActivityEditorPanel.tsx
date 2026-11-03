@@ -90,7 +90,7 @@ export function ActivityEditorPanel({ open, onClose, stageDetail, projectId, onS
     <>
       <SidePanel open={open} onClose={onClose} width="lg" title="Edit activities" subtitle={`Stage: ${stage.name}. Activities appear as sub-tabs. Changes are saved together.`}
         onSave={save} saving={saving}>
-        <AiStrip text="Get activities (with their tasks) that similar past deals needed in this stage. You choose what to add."><AiSuggestButton label="Suggest activities" request={{ kind: 'activities', projectId, stageId: stage.stage_id, current: { activities: rows.map((r) => r.name) } }} onApply={applySuggestion} /></AiStrip>
+        <AiStrip text="Get activities (with their tasks) that similar past deals needed in this stage. You choose what to add."><AiSuggestButton label="Suggest activities" request={{ kind: 'activities', projectId, stageId: stage.stage_id, current: { stage_name: stage.name, activities: rows.map((r) => ({ name: r.name, description: r.description, priority: r.priority })) } }} onApply={applySuggestion} applyToast="Suggested activities listed — add the ones you want, then press Save" /></AiStrip>
         {ideas && (
           <div className="mb-4 rounded-lg border border-piku/25 bg-piku-soft/40 p-3">
             <div className="mb-1 flex items-center gap-2"><Sparkles size={13} className="text-piku" /><span className="text-[13px] font-semibold">Suggested activities</span>{aiMeta && <AiLabel mode={aiMeta.mode} />}</div>
