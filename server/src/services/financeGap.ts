@@ -162,7 +162,10 @@ export function analyseGap(input: GapInput): GapAnalysis {
       else if (k === 'Buyer') { f = 0; rule = 'Tagged Buyer: buyer pays all'; }
       else {
         const what = k === 'Shared' ? 'Shared' : 'No payer agreed';
-        if (key === 'beneficiary') { f = uu >= 50 ? 0 : 1; rule = `${what}, ${uLabel}: ${uu >= 50 ? 'buyer' : 'seller'} is the main user and pays all`; }
+        if (key === 'beneficiary') {
+          f = uu > 50 ? 0 : uu < 50 ? 1 : 0.5;
+          rule = uu === 50 ? `${what}, ${uLabel}: no main user, split 50 / 50` : `${what}, ${uLabel}: ${uu > 50 ? 'buyer' : 'seller'} is the main user and pays all`;
+        }
         else if (key === 'even') { f = 0.5; rule = `${what}: split 50 / 50`; }
         else { f = (100 - uu) / 100; rule = `${what}, ${uLabel}: seller pays ${100 - uu}%`; }
       }
@@ -207,7 +210,7 @@ export function analyseGap(input: GapInput): GapAnalysis {
     if (taggedShare >= GAP_RULES.taggedForBeneficiary) {
       key = 'beneficiary';
       reasons.push(`${Math.round(taggedShare * 100)}% of the cost (${m(mixRaw.seller + mixRaw.buyer)}) is already tagged to the side that benefits, so this basis needs the least negotiation.`);
-      reasons.push(`Only ${sharedLines.length} shared or untagged line${sharedLines.length === 1 ? '' : 's'} (${m(mixRaw.shared + mixRaw.untagged)}) need a decision.`);
+      reasons.push(sharedLines.length === 1 ? `Only 1 shared or untagged line (${m(mixRaw.shared + mixRaw.untagged)}) needs a decision.` : `Only ${sharedLines.length} shared or untagged lines (${m(mixRaw.shared + mixRaw.untagged)}) need a decision.`);
     } else if (sharedShare >= GAP_RULES.sharedForUsage && usageRecordedShare >= GAP_RULES.usageRecordedShare) {
       key = 'usage';
       reasons.push(`${Math.round(sharedShare * 100)}% of the cost (${m(mixRaw.shared + mixRaw.untagged)}) sits on shared or untagged lines; splitting them by actual use is the easiest basis to defend.`);
@@ -233,7 +236,7 @@ export function analyseGap(input: GapInput): GapAnalysis {
   if (rec) {
     const buyerStill = Math.max(0, rec.buyerGap - pipelineBuyer);
     const sellerStill = Math.max(0, rec.sellerGap - pipelineSeller);
-    const add = (type: string, funder: 'Buyer' | 'Seller', amount: number, why: string) => { if (amount > 0) routes.push({ type, funder, amount: Math.round(amount), why, terms: play(type).terms, watch: play(type).watch }); };
+    const add = (type: string, funder: 'Buyer' | 'Seller', amount: number, why: string, fallback = false) => { if (amount > 0) routes.push({ type, funder, amount: Math.round(amount), why, terms: play(type).terms, watch: play(type).watch, ...(fallback ? { fallback } : {}) }); };
     if (rec.buyerGap > 0) {
       if (buyerStill > 0) {
         const short = buyerStill <= Math.max(3000000, uses * 0.25);
@@ -242,8 +245,9 @@ export function analyseGap(input: GapInput): GapAnalysis {
       }
       const pricey = pipeRows.filter((f) => fundingSide(f.source_type) === 'Buyer' && n(f.interest_rate_pct) >= 11 && f.source_type !== 'Bridge loan')
         .sort((a, b) => n(b.amount) - n(a.amount))[0];
+      // Covered by the pipeline: nothing new to raise. Only a back-up in case the largest, most expensive option falls through.
       if (buyerStill <= 0 && pricey) add('Bridge loan', 'Buyer', Math.min(rec.buyerGap, n(pricey.amount)),
-        `The pipeline covers the buyer's ${m(rec.buyerGap)}, but the largest option (${pricey.provider || pricey.source_type}) is priced at ${pricey.interest_rate_pct}%; ask a bank for a cheaper bridge to compare.`);
+        `Back-up only: the buyer's ${m(rec.buyerGap)} is already covered by options in the pipeline (${m(pipelineBuyer)}), so nothing new needs raising now. If ${pricey.provider || pricey.source_type} (${m(n(pricey.amount))} at ${pricey.interest_rate_pct}%) falls through or stays this expensive, a bank bridge of about this size replaces it.`, true);
       const vendorLines = rec.evidence.filter((e) => e.cost_id && lines.find((c) => c.cost_id === e.cost_id)?.vendor).reduce((s, e) => s + e.buyer, 0);
       const vendorInPipe = pipeRows.some((f) => f.source_type === 'Vendor / deferred payment');
       if (vendorLines > 0 && !vendorInPipe) add('Vendor / deferred payment', 'Buyer', Math.min(rec.buyerGap, vendorLines), `${m(vendorLines)} of buyer-paid cost sits with named vendors; spreading it over the service contract reduces the cash needed at Day-1.`);
@@ -264,7 +268,9 @@ export function analyseGap(input: GapInput): GapAnalysis {
     if (noUsage.length) nextSteps.push({ text: `Confirm buyer usage % with the client on ${noUsage.length} shared line${noUsage.length === 1 ? '' : 's'} (50% assumed today).`, owner: manager, role: 'Manager' });
     if (rec.capExcess > 0) nextSteps.push({ text: `Raise the SPA cap${clause ? ` (${clause})` : ''} with the seller: ${m(rec.capExcess)} of the seller share is above it.`, owner: partner, role: 'Partner' });
     if (pipeRows.length) nextSteps.push({ text: `Move the ${pipeRows.length} pipeline option${pipeRows.length === 1 ? '' : 's'} (${m(pipeline)}) to a term sheet or commitment, comparing price.`, owner: manager, role: 'Manager' });
-    const bankRoute = routes.find((x) => x.type === 'Bridge loan' || x.type === 'Term loan');
+    const bankRoute = routes.find((x) => !x.fallback && (x.type === 'Bridge loan' || x.type === 'Term loan'));
+    const backup = routes.find((x) => x.fallback);
+    if (!bankRoute && backup) nextSteps.push({ text: `Keep a bank bridge of about ${m(backup.amount)} ready as a back-up in case a pipeline option falls through; no bank request is needed now.`, owner: manager, role: 'Manager' });
     if (bankRoute) nextSteps.push({ text: `Run the independence check, then ask a bank for about ${m(bankRoute.amount)} (${bankRoute.type.toLowerCase()}; Funding options, Ask a bank).`, owner: partner, role: 'Partner' });
     if (nextSteps.length < 3) nextSteps.push({ text: 'Update cost lines as vendor quotes firm up; the split recalculates automatically.', owner: manager, role: 'Manager' });
   } else {
@@ -302,7 +308,7 @@ export function offlineGapSummary(a: GapAnalysis, codeName: string): string {
     `${codeName} has a funding gap of ${m(a.gap)}: ${m(a.secured)} of the ${m(a.uses)} one-time separation cost is secured${a.pipeline ? ` and ${m(a.pipeline)} is in the pipeline, leaving ${m(a.gapAfterPipeline)} with no source yet` : ''}.`,
     rec ? `The recommended basis is ${rec.name.toLowerCase()}: the seller carries ${m(rec.sellerShare)} and the buyer ${m(rec.buyerShare)}, so the seller still funds ${m(rec.sellerGap)} of the gap and the buyer ${m(rec.buyerGap)}.` : '',
     rec && rec.capExcess > 0 ? `The SPA cap moves ${m(rec.capExcess)} from the seller to the buyer on this basis.` : '',
-    a.routes[0] ? `First route to explore: ${a.routes[0].type.toLowerCase()} for ${m(a.routes[0].amount)} (${a.routes[0].funder.toLowerCase()} side).` : '',
+    (() => { const r = a.routes.find((x) => !x.fallback); const b = a.routes.find((x) => x.fallback); return r ? `First route to explore: ${r.type.toLowerCase()} for ${m(r.amount)} (${r.funder.toLowerCase()} side).` : b ? `The pipeline covers the buyer's part; keep a ${b.type.toLowerCase()} of about ${m(b.amount)} as a back-up.` : ''; })(),
   ];
   return parts.filter(Boolean).join(' ');
 }

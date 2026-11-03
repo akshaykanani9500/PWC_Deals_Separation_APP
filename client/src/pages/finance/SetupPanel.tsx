@@ -7,7 +7,7 @@ import { post } from '../../lib/api';
 import { useToast } from '../../components/toast';
 import { SidePanel } from '../../components/SidePanel';
 import { Button, Field, Input, Select } from '../../components/ui';
-import { money } from '../../lib/format';
+import { money } from './fmt';
 
 interface Line { category: string; amount: string; payer: string; usage: string; description: string }
 const blankLine = (category = 'IT infrastructure', payer = 'Seller'): Line => ({ category, amount: '', payer, usage: '', description: '' });

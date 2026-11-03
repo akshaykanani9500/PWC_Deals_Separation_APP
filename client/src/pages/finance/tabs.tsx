@@ -8,7 +8,8 @@ import { DEMO_FUNDERS, FUNDING_PLAYBOOK } from '@shared/finance';
 import { patch } from '../../lib/api';
 import { useToast } from '../../components/toast';
 import { Button, Pill, Select } from '../../components/ui';
-import { date, money, num } from '../../lib/format';
+import { date, num } from '../../lib/format';
+import { money } from './fmt';
 import { PERSONA_LABEL } from '../../hooks/useUsers';
 import { CHART, legendText } from '../dashboard/widgets';
 import type { EditTarget } from './FinancePage';
@@ -431,9 +432,10 @@ export function OptionsTab({ w, onEdit, onChanged }: W & { onEdit: (t: EditTarge
         </div>
       </div>
 
-      <AskABank w={w} onChanged={onChanged} />
+      <AskABank w={w} onChanged={onChanged}
+        onAddToPlan={(b) => onEdit({ kind: 'funding', initial: { source_type: b.products[0], provider: b.name, status: 'Identified', amount: remaining ? Math.round(remaining / 1000) * 1000 : '', purpose: 'Option to close the funding gap.' } })} />
 
-      <Card title="Demo funding partners" right={!w.perms.canEdit && <span className="text-[12px] text-ink-muted">Only finance editors can add an option to the plan</span>}>
+      <Card title="Other funding partners (not banks)" right={!w.perms.canEdit && <span className="text-[12px] text-ink-muted">Only finance editors can add an option to the plan</span>}>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {DEMO_FUNDERS.map((f) => (
             <div key={f.name} className="flex flex-col rounded-lg border border-line px-3.5 py-3">

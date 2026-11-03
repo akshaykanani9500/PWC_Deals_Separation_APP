@@ -5,14 +5,15 @@
  */
 import { useState } from 'react';
 import clsx from 'clsx';
-import { Copy, Landmark, Mail, Phone, Send, Sparkles, FileCheck2, XCircle, MessageSquareReply, Pencil, Undo2 } from 'lucide-react';
+import { Plus, Copy, Landmark, Mail, Phone, Send, Sparkles, FileCheck2, XCircle, MessageSquareReply, Pencil, Undo2 } from 'lucide-react';
 import type { BankCard, FinanceWorkspace, FinancingRequestRow } from '@shared/types';
 import { FINANCING_REQUEST_STATUS } from '@shared/schema';
 import { patch, post } from '../../lib/api';
 import { useToast } from '../../components/toast';
 import { SidePanel } from '../../components/SidePanel';
 import { AiLabel, Button, Field, Input, Pill, Select, Textarea } from '../../components/ui';
-import { date, money } from '../../lib/format';
+import { date } from '../../lib/format';
+import { money } from './fmt';
 import { Card, cur } from './tabs';
 
 const STEPS = ['Draft', 'Sent', 'RM replied', 'Term sheet'] as const;
@@ -177,7 +178,7 @@ function TermSheetPanel({ w, row, onClose, onChanged }: { w: FinanceWorkspace; r
   );
 }
 
-export function AskABank({ w, onChanged }: { w: FinanceWorkspace; onChanged: () => void }) {
+export function AskABank({ w, onChanged, onAddToPlan }: { w: FinanceWorkspace; onChanged: () => void; onAddToPlan?: (bank: BankCard) => void }) {
   const toast = useToast();
   const c = cur(w);
   const [open, setOpen] = useState<{ bank: BankCard; row?: FinancingRequestRow } | null>(null);
@@ -217,7 +218,10 @@ export function AskABank({ w, onChanged }: { w: FinanceWorkspace; onChanged: () 
                 </div>
               </div>
               <div className="flex-1" />
-              {bp.canDraft && <Button size="sm" variant="primary" className="mt-3 self-start" icon={<Send size={14} />} onClick={() => setOpen({ bank: b })} aria-label={`Request financing from ${b.name}`}>Request financing</Button>}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {bp.canDraft && <Button size="sm" variant="primary" icon={<Send size={14} />} onClick={() => setOpen({ bank: b })} aria-label={`Request financing from ${b.name}`}>Request financing</Button>}
+                {w.perms.canEdit && onAddToPlan && <Button size="sm" icon={<Plus size={14} />} onClick={() => onAddToPlan(b)} title={`Add ${b.name} to the funding plan`}>Add to funding plan</Button>}
+              </div>
             </article>
           ))}
         </div>
@@ -239,6 +243,7 @@ export function AskABank({ w, onChanged }: { w: FinanceWorkspace; onChanged: () 
                     <div className="truncate font-medium" title={r.bank_name}>{r.bank_name}</div>
                     <div className="truncate text-[11.5px] text-ink-muted">{r.product} · {r.rm_name}{r.owner_name ? ` · by ${r.owner_name}` : ''}</div>
                     {r.funding_id && <div className="text-[11.5px] text-green">Funding line: {r.funding_status ?? 'linked'}</div>}
+                    {r.outdated && <div className="mt-1 rounded bg-amber-soft px-1.5 py-1 text-[11.5px] text-amber" role="note">{r.outdated}</div>}
                   </td>
                   <td className="td num align-top text-right font-medium">{money(r.amount, c)}</td>
                   <td className="td align-top"><Pill tone={statusTone[r.status]}>{r.status}</Pill><div className="mt-1.5"><Stepper status={r.status} /></div></td>

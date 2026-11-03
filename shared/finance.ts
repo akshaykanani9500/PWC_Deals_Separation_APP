@@ -31,9 +31,11 @@ export const FUNDING_PLAYBOOK: { type: string; who: string; when: string; terms:
   { type: 'Government incentive', who: 'State / central schemes (e.g. for new facilities in India)', when: 'New sites, data centres or hiring in incentive zones.', terms: 'Grants, tax relief or subsidised land/power.', watch: 'Paperwork and claw-back conditions.' },
 ];
 
-/** Fictional funding partners for the demo. Adding one creates an "Identified" funding line; nothing is sent anywhere. */
+/**
+ * Fictional NON-BANK funding partners for the demo (banks are DEMO_BANKS below: Bank 1-4, used everywhere).
+ * Adding one creates an "Identified" funding line; nothing is sent anywhere.
+ */
 export const DEMO_FUNDERS: { name: string; kind: string; offers: string[]; typical: string }[] = [
-  { name: 'Northbridge Bank (demo)', kind: 'Bank', offers: ['Bridge loan', 'Term loan', 'Revolving credit facility'], typical: 'Bridge 9-12 months at ~9.5%; term loans 3-5 years' },
   { name: 'Meridian Growth Partners (demo PE)', kind: 'Private equity', offers: ['Private equity equity'], typical: 'Equity for carve-outs above USD 50m' },
   { name: 'Arcadia Credit Fund (demo)', kind: 'Private credit / venture debt', offers: ['Venture / private credit'], typical: '12-36 months at 12-14%' },
   { name: 'Sahyadri Infra Finance (demo NBFC)', kind: 'NBFC / equipment finance', offers: ['Term loan', 'Vendor / deferred payment'], typical: 'IT equipment and data-centre leasing in India' },
@@ -72,7 +74,7 @@ export const GAP_RULES = {
 
 export type GapScenarioKey = 'beneficiary' | 'even' | 'usage' | 'avoided';
 export const GAP_SCENARIOS: { key: GapScenarioKey; name: string; basis: string }[] = [
-  { key: 'beneficiary', name: 'Beneficiary pays', basis: 'Each line is paid by the side it is tagged to. Shared or untagged lines go wholly to the side that uses them most (the buyer when buyer use is 50% or more).' },
+  { key: 'beneficiary', name: 'Beneficiary pays', basis: 'Each line is paid by the side it is tagged to. Shared or untagged lines go wholly to the side that uses them most; at exactly 50% use nobody is the main user, so the line is split 50 / 50.' },
   { key: 'even', name: 'Even split of shared lines', basis: 'Tagged lines stay with their side. Shared and untagged lines are split 50 / 50.' },
   { key: 'usage', name: 'Usage-based', basis: 'Tagged lines stay with their side. Shared and untagged lines are split by the buyer usage % on each line (50% when none is recorded).' },
   { key: 'avoided', name: 'Avoided-cost credit', basis: `Usage-based split, then the seller is credited ${GAP_RULES.avoidedCreditShare * 100}% of the TSA fees the buyer avoids by exiting ${GAP_RULES.avoidedTsaMonths} months earlier (moved from seller to buyer).` },

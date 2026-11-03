@@ -47,13 +47,13 @@ test('partner: add a demo funding partner to the plan, edit it, remove it', asyn
   await panel.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(page.getByText('Funding source added')).toBeVisible();
   await page.getByRole('tablist', { name: 'Finance sections' }).getByRole('tab', { name: 'Costs & funding' }).click();
-  const row = page.locator('tr', { hasText: 'Northbridge Bank (demo)' }).filter({ hasText: 'Identified' }).first();
+  const row = page.locator('tr', { hasText: 'Bank 1 (demo) – Northbridge Bank' }).filter({ hasText: 'Identified' }).first();
   await expect(row).toBeVisible();
   await row.getByRole('button', { name: /Edit/ }).click();
   await page.getByRole('dialog').getByLabel('Status *').selectOption('Term sheet');
   await page.getByRole('dialog').getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText('Funding source saved')).toBeVisible();
-  const edited = page.locator('tr', { hasText: 'Northbridge Bank (demo)' }).filter({ hasText: 'Term sheet' }).first();
+  const edited = page.locator('tr', { hasText: 'Bank 1 (demo) – Northbridge Bank' }).filter({ hasText: 'Term sheet' }).first();
   await edited.getByRole('button', { name: /Edit/ }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Remove' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Remove' }).click();
