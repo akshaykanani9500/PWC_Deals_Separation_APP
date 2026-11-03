@@ -326,6 +326,8 @@ export interface FinancingRequest extends AuditCols {
 }
 export interface FinancingRequestRow extends FinancingRequest {
   bank_name: string; owner_name?: string; funding_status?: string;
+  /** v1.4.1: an open draft that asks for more than still needs a source */
+  outdated?: string;
   can: { edit: boolean; markSent: boolean; termSheet: boolean; decline: boolean; withdraw: boolean; reply: boolean };
 }
 export interface BankCard {
@@ -347,7 +349,7 @@ export interface GapScenario {
   sellerGap: number; buyerGap: number;
   evidence: GapEvidence[]; notes: string[];
 }
-export interface GapRoute { type: string; funder: 'Buyer' | 'Seller'; amount: number; why: string; terms: string; watch: string }
+export interface GapRoute { type: string; funder: 'Buyer' | 'Seller'; amount: number; why: string; terms: string; watch: string; /** v1.4.1: a back-up if a pipeline option falls through (not new money to raise now) */ fallback?: boolean }
 export interface GapNextStep { text: string; owner: string; role: 'Partner' | 'Manager' }
 export interface GapLesson { title: string; body: string; item_type: string; sources: string[] }
 export interface GapAnalysis {

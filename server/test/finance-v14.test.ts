@@ -336,3 +336,36 @@ describe('saved bank emails carry no contact details', () => {
     expect(up.body.error).toMatch(/phone number/);
   });
 });
+
+// ---------------- v1.4.1 ----------------
+describe('v1.4.1 wording and consistency', () => {
+  it('splits a 50% shared line 50 / 50 under beneficiary pays', () => {
+    const a = analyseGap({ project: proj(), costItems: [cost('A', 800, 'Seller'), cost('B', 200, 'Shared', 50)], funding: [], tsaRunRate: 0 });
+    const ev = a.scenarios.find((s) => s.key === 'beneficiary')!.evidence.find((e) => e.cost_id === 'B')!;
+    expect(ev.seller).toBe(100);
+    expect(ev.rule).toMatch(/no main user, split 50 \/ 50/);
+    expect(a.recommendation!.reasons.join(' ')).toMatch(/Only 1 shared or untagged line \(USD 200\) needs a decision/);
+  });
+
+  it('only recommends a back-up when the pipeline already covers the buyer gap', () => {
+    const costs = [cost('A', 1000, 'Buyer')];
+    const funding = [fund('Buyer balance-sheet cash', 400), { ...fund('Venture / private credit', 700, 'Term sheet'), interest_rate_pct: 12.5, provider: 'Arcadia' } as FundingSource];
+    const a = analyseGap({ project: proj(), costItems: costs, funding, tsaRunRate: 0 });
+    expect(a.gapAfterPipeline).toBe(0);
+    const bank = a.routes.filter((r) => r.type === 'Bridge loan');
+    expect(bank).toHaveLength(1);
+    expect(bank[0].fallback).toBe(true);
+    expect(bank[0].why).toMatch(/Back-up only.*already covered/);
+    expect(a.nextSteps.some((s) => /ask a bank/.test(s.text))).toBe(false);
+    expect(a.nextSteps.some((s) => /back-up/.test(s.text))).toBe(true);
+  });
+
+  it('flags open drafts that ask for more than still needs a source', async () => {
+    const api = t.as(USERS.daniel);
+    const r = await api.post(`/api/projects/${RIOJA}/finance/bank-requests`, { bank_code: 'BANK3', product: 'Term loan', amount: 99000000 });
+    expect(r.status).toBe(201);
+    const w = (await api.get(`/api/projects/${RIOJA}/finance`)).body;
+    expect(w.bankRequests.find((x: any) => x.request_id === r.body.request_id).outdated).toMatch(/^Outdated/);
+    expect(w.banks.map((b: any) => b.name)).toContain('Bank 1 (demo) – Northbridge Bank');
+  });
+});

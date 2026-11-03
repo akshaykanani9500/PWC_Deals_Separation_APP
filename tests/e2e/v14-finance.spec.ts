@@ -61,6 +61,8 @@ test('manager drafts a bank request; partner marks it sent and records a term sh
   await ts.getByLabel('Tenor (months)').fill('12');
   await ts.getByRole('button', { name: 'Record term sheet' }).click();
   await expect(page.getByText('Term sheet recorded: funding line added to Costs & funding')).toBeVisible();
+  // the older Bank 4 draft now asks for money the pipeline already covers
+  await expect(page.getByRole('row', { name: /Bank 4 \(demo\)/ }).getByText(/^Outdated:/)).toBeVisible();
   await page.getByRole('tab', { name: 'Costs & funding' }).click();
   await expect(page.locator('tr', { hasText: 'Bank 1 (demo) – Northbridge Bank' }).filter({ hasText: 'Term sheet' })).toBeVisible();
   expect(errors).toEqual([]);

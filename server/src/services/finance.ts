@@ -14,7 +14,7 @@ import type {
 import { COST_CATEGORIES } from '../../../shared/schema';
 import { DEMO_BANKS, RATE_CARD, rateFor, SECURED_STATUSES, PIPELINE_STATUSES } from '../../../shared/finance';
 import { viaGrant } from './grants';
-import { analyseGap } from './financeGap';
+import { analyseGap, fmtMoney } from './financeGap';
 import { bankPerms, decorateRequest, offlineBankDraft } from './financeBank';
 
 const n = (v: unknown) => Number(v) || 0;
@@ -168,7 +168,15 @@ export async function buildFinanceWorkspace(db: Db, auth: AuthContext, project: 
       missing: setupMissing,
       setupBy: `The Engagement Partner${nameOf(project.partner_user_id) ? ` (${nameOf(project.partner_user_id)})` : ''} sets up finance; Managers can view it and draft bank requests.`,
     },
-    bankRequests: requests.map((r) => decorateRequest(r, auth, project, userById, r.funding_id ? fundingStatus.get(r.funding_id) : undefined))
+    bankRequests: requests.map((r) => {
+      const row = decorateRequest(r, auth, project, userById, r.funding_id ? fundingStatus.get(r.funding_id) : undefined);
+      // An open draft asking for more than still needs a source (after the pipeline) is out of date.
+      if (r.status === 'Draft' && n(r.amount) > gap.gapAfterPipeline + 1000) {
+        row.outdated = gap.gapAfterPipeline <= 0 ? 'Outdated: the gap is now covered by secured funding and the pipeline. Withdraw it, or keep it only as a back-up.'
+          : `Outdated: only ${fmtMoney(gap.gapAfterPipeline, project.currency || 'USD')} still needs a source. Edit the amount or withdraw it.`;
+      }
+      return row;
+    })
       .sort((a, b) => (b.last_update_at || b.created_at).localeCompare(a.last_update_at || a.created_at)),
     banks: DEMO_BANKS.map((b) => ({ code: b.code, name: b.name, kind: b.kind, products: b.products, terms: b.terms, minTicket: b.minTicket, maxTicket: b.maxTicket, region: b.region, rm: { ...b.rm } })),
     bankPerms: bp,
@@ -263,7 +271,7 @@ export function generateFinanceDemo(input: FinanceDemoInput, now = new Date()): 
       const secured: [string, string, number, string, number | null, number | null, string][] = [
         ['Seller contribution (SPA)', 'Seller, per SPA separation-cost clause', 0.45, closed ? 'Drawn' : 'Committed', null, null, 'Seller pays IT stand-up and retention up to an agreed cap.'],
         ['Buyer balance-sheet cash', 'Buyer treasury', 0.35, closed ? 'Drawn' : 'Committed', null, null, 'Approved separation budget in the buyer integration plan.'],
-        ['Bridge loan', 'Northbridge Bank (demo)', 0.2, closed || rnd() < 0.5 ? 'Drawn' : 'Committed', 9.5, 12, 'Covers Day-1 spend until the term facility is in place.'],
+        ['Bridge loan', 'Bank 1 (demo) – Northbridge Bank', 0.2, closed || rnd() < 0.5 ? 'Drawn' : 'Committed', 9.5, 12, 'Covers Day-1 spend until the term facility is in place.'],
       ];
       let left = securedTarget;
       secured.forEach(([type, provider, share, status, rate, tenor, purpose], i) => {

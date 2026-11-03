@@ -8,7 +8,7 @@ import { AlertTriangle, ArrowRight, CheckCircle2, ClipboardList, History, Lightb
 import type { FinanceWorkspace, GapScenario, GapSummary } from '@shared/types';
 import { post } from '../../lib/api';
 import { AiLabel, Button, Pill, Skeleton } from '../../components/ui';
-import { money } from '../../lib/format';
+import { money } from './fmt';
 import { Card, Tile, cur } from './tabs';
 
 type Go = (t: any, extra?: Record<string, string>) => void;
@@ -55,7 +55,7 @@ function ScenarioTable({ w, compact }: { w: FinanceWorkspace; compact?: boolean 
       <table className="w-full text-[12.5px]" aria-label="Cost-sharing scenarios">
         <thead><tr>
           <th className="th">Basis</th><th className="th text-right">Seller share</th><th className="th text-right">Buyer share</th>
-          <th className="th text-right">Seller still funds</th><th className="th text-right">Buyer still funds</th><th className="th text-right">{compact ? 'Over cap' : 'Moved by SPA cap'}</th>
+          <th className="th text-right">Seller still funds</th><th className="th text-right">Buyer still funds</th><th className="th text-right">Over SPA cap</th>
         </tr></thead>
         <tbody>{g.scenarios.map((s) => <ScenarioRow key={s.key} s={s} c={c} rec={g.recommendation?.key === s.key} />)}</tbody>
       </table>
@@ -208,7 +208,7 @@ export function GapTab({ w, go, onSetup }: { w: FinanceWorkspace; go: Go; onSetu
             <ul className="space-y-2.5">
               {g.routes.map((r) => (
                 <li key={r.type + r.funder} className="text-[12.5px]">
-                  <div className="flex flex-wrap items-baseline gap-2"><span className="text-[13px] font-semibold">{r.type}</span><Pill>{`${r.funder} side`}</Pill><span className="num ml-auto font-medium">{money(r.amount, c)}</span></div>
+                  <div className="flex flex-wrap items-baseline gap-2"><span className="text-[13px] font-semibold">{r.type}</span><Pill>{`${r.funder} side`}</Pill>{r.fallback && <Pill tone="bg-sunken text-ink-soft">Back-up only</Pill>}<span className="num ml-auto font-medium">{r.fallback ? <span className="text-ink-muted">if needed </span> : null}{money(r.amount, c)}</span></div>
                   <p className="text-ink-soft">{r.why}</p>
                   <p className="text-ink-muted">Terms: {r.terms} Watch: {r.watch}</p>
                 </li>
