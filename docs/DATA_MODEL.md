@@ -525,3 +525,10 @@ Every create/update/delete, AI suggestion, approval and denied access.
 - Meetings / emails / calls saved from the activity, stage and task dialogs are ordinary `communications` rows (channel Meeting / Email / Call)
   with `stage_id` / `activity_id` / `task_id` of the screen; a meeting's `occurred_at` is the scheduled start and `duration_min` its length.
 - Audit actions added: `dashboard.widget_request`, `ai.widget_suggest`; `communication.create` details carry `via: 'comms-dialog'`.
+
+## v1.4 (A): access governance notes
+
+- No new columns. `access_grants.permission_code` may now also hold an acting role: `role.LEAD`, `role.MANAGER`, `role.PARTNER`. While active, it adds that persona's actions minus `NEVER_GRANT` (gates, close-out, project create/close, access approve/review, audit, admin, portfolio, knowledge edit) on that project only, and sets `auth.actingCode` so row rules follow the acting role (an analyst acting as Workstream Lead edits only stages of their workstream / that they own).
+- `status` stays `Pending L1 | Pending L2 | Active | Rejected | Revoked | Cancelled`. "Escalated" (pending ≥ 3 days) and "Expired" (pending ≥ 7 days, or active past `expires_at`) are computed on read from `created_at` / `expires_at`.
+- Auto-cancel on member removal writes `status = 'Cancelled'` and the reason in `revoke_reason`; auto-revoke fills `revoked_by/at/revoke_reason`.
+- Seed: Project Rioja is a clean-team deal (`clean_team_required = 'Y'`), Aditya's Rioja member row has workstream `Day-1 Readiness`, and a fifth demo request `role.LEAD` for Aditya on Rioja (sponsored by Rajiv, `Pending L2`) is added. The other four demo requests are unchanged and valid under the tiers.

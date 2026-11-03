@@ -179,7 +179,9 @@ export interface ProjectDetail {
     canEditFinance?: boolean; canRequestAccess?: boolean; canSponsorAccess?: boolean;
   };
   /** Extra permissions this user holds on THIS project through approved, unexpired access grants. */
-  grants?: { grant_id: string; permission_code: string; label: string; expires_at?: string | null }[];
+  grants?: { grant_id: string; permission_code: string; label: string; expires_at?: string | null; acting_role?: PersonaCode | null }[];
+  /** v1.4: live extra access of every team member (not sent to client users) */
+  memberAccess?: MemberAccessChip[];
 }
 
 export interface StageDetail {
@@ -450,3 +452,27 @@ export interface WidgetData {
 export type WidgetSuggestResponse =
   | { possible: true; spec: WidgetSpec; explanation: string; mode: string }
   | { possible: false; reason: string; closestAlternatives: { spec: WidgetSpec; explanation: string }[]; suggestion: string; mode: string };
+
+// ---- v1.4 A: access governance ----
+/** A person who can act on the next step of an access request. */
+export interface ApproverRef { user_id: string; name: string; role: string }
+
+/** v1.4 fields on every access-request row (declaration-merged into AccessRequestRow above). */
+export interface AccessRequestRow {
+  /** "Level 1 only" / "Level 1 + Risk & Quality" for this project */
+  policy?: string; needs_l2?: boolean; acting_role?: PersonaCode | null;
+  age_days?: number; escalated?: boolean; pending_expires_at?: string | null; expired_pending?: boolean;
+  next_level?: 0 | 1 | 2; next_approvers?: ApproverRef[]; blocked_reason?: string | null;
+  status_line?: string; last_event_at?: string; last_event_by?: string | null; last_event_kind?: string;
+  /** Mutating calls only: plain-words result for the toast */
+  notice?: string;
+}
+
+/** GET /api/access/feed (top-bar bell) */
+export interface AccessFeed { waiting: AccessRequestRow[]; updates: AccessRequestRow[] }
+
+/** GET /api/access/preview */
+export interface AccessPreview { policy: string; needsL2: boolean; durations: number[]; sponsored?: boolean; level1: ApproverRef[]; level2: ApproverRef[]; blocked: string | null }
+
+/** Live extra access of one team member (TeamPanel chips). */
+export interface MemberAccessChip { user_id: string; grant_id: string; label: string; acting_role?: PersonaCode | null; expires_at?: string | null }

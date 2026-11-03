@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Db } from '../db/Db';
 import type { AuthContext, AuthedRequest } from '../auth-types';
 import type {
-  Activity, Communication, Contact, Project, ProjectDetail, ProjectListItem, ProjectMember, Stage, Task,
+  AccessGrant, Activity, Communication, Contact, Project, ProjectDetail, ProjectListItem, ProjectMember, Stage, Task,
 } from '../../../shared/types';
 import { DEFAULT_STAGES } from '../../../shared/defaults';
 import { COMM_CHANNELS, DEAL_TYPES, INDUSTRIES, MEMBER_ROLES, PRIORITY, PROJECT_STATUS, RAG, SENSITIVITY, CONSENT_STATUS } from '../../../shared/schema';
@@ -14,7 +14,8 @@ import {
 } from '../services/access';
 import { audit } from '../services/audit';
 import { activeGrantsFor } from '../services/grants';
-import { permissionLabel } from '../../../shared/access';
+import { withdrawProjectAccess } from '../services/approvals';
+import { grantable, grantState, permissionLabel } from '../../../shared/access';
 import { isOverdue, rollupProject, today } from '../services/rollup';
 import { assertOpen, byOrder, pickFields, userIndex } from './helpers';
 
@@ -115,7 +116,9 @@ export async function projectDetail(db: Db, auth: AuthContext, projectId: string
       canRequestAccess: (auth.baseActions ?? auth.actions).includes('access.request') && !closed,
       canSponsorAccess: (auth.baseActions ?? auth.actions).includes('access.approve') && !closed,
     },
-    grants: (await activeGrantsFor(db, auth.user.user_id, projectId)).map((g) => ({ grant_id: g.grant_id, permission_code: g.permission_code, label: permissionLabel(g.permission_code), expires_at: g.expires_at })),
+    grants: (await activeGrantsFor(db, auth.user.user_id, projectId)).map((g) => ({ grant_id: g.grant_id, permission_code: g.permission_code, label: permissionLabel(g.permission_code), expires_at: g.expires_at, acting_role: grantable(g.permission_code)?.actingRole ?? null })),
+    memberAccess: auth.code === 'CLIENT' ? [] : (await db.find<AccessGrant>('access_grants', (g) => g.project_id === projectId && grantState(g) === 'Active'))
+      .map((g) => ({ user_id: g.grantee_user_id, grant_id: g.grant_id, label: permissionLabel(g.permission_code), acting_role: grantable(g.permission_code)?.actingRole ?? null, expires_at: g.expires_at })),
   };
 }
 
@@ -253,8 +256,11 @@ export function projectsRouter(db: Db): Router {
     const m = await db.get<ProjectMember>('project_members', req.params.memberId);
     if (!m || m.project_id !== project.project_id) throw new HttpError(404, 'Member not found.', 'NOT_FOUND');
     await db.softDelete('project_members', m.member_id, auth.user.user_id);
-    await audit(db, auth, 'member.remove', { type: 'member', id: m.member_id, projectId: project.project_id });
-    res.json({ ok: true });
+    // v1.4: leaving the team withdraws extra access there (pending requests cancelled, live grants revoked; audited).
+    const stillOnTeam = (await db.find<ProjectMember>('project_members', (x) => x.project_id === project.project_id && x.user_id === m.user_id)).length > 0;
+    const withdrawn = stillOnTeam ? 0 : await withdrawProjectAccess(db, auth, project.project_id, m.user_id);
+    await audit(db, auth, 'member.remove', { type: 'member', id: m.member_id, projectId: project.project_id, details: { user: m.user_id, accessWithdrawn: withdrawn } });
+    res.json({ ok: true, withdrawn });
   }));
 
   // ---------- contacts & communications ----------

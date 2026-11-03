@@ -28,6 +28,7 @@ export default function ProjectPage() {
   const { session } = useSession();
   const { data, error, loading, reload } = useApi<ProjectDetail>(`/projects/${projectId}`, [projectId]);
   const [panel, setPanel] = useState<PanelName>(null);
+  const [accessFor, setAccessFor] = useState<string | null>(null);
   const [activityName, setActivityName] = useState<string | undefined>();
   /** Bumped after any write so every part re-reads (roll-ups change % everywhere). */
   const [version, setVersion] = useState(0);
@@ -99,8 +100,8 @@ export default function ProjectPage() {
         onClose={() => { search.delete('task'); setSearch(search, { replace: true }); }} onChanged={bump} />
 
       <EditProjectPanel open={panel === 'edit'} detail={data} onClose={() => setPanel(null)} onSaved={bump} />
-      <TeamPanel open={panel === 'team'} detail={data} onClose={() => setPanel(null)} onSaved={bump} />
-      <RequestAccessPanel open={panel === 'access'} detail={data} onClose={() => setPanel(null)} onChanged={bump} />
+      <TeamPanel open={panel === 'team'} detail={data} onClose={() => setPanel(null)} onSaved={bump} onGiveAccess={(uid) => { setAccessFor(uid); setPanel('access'); }} />
+      <RequestAccessPanel open={panel === 'access'} detail={data} defaultGrantee={accessFor} onClose={() => { setPanel(null); setAccessFor(null); }} onChanged={bump} />
       <CloseoutPanel open={panel === 'closeout'} detail={data} onClose={() => setPanel(null)} onClosed={bump} />
       <StageEditorPanel open={panel === 'stages'} detail={data} onClose={() => setPanel(null)} onSaved={bump} />
     </div>

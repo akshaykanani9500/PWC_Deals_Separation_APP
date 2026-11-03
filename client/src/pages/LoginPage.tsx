@@ -7,12 +7,14 @@ import { get } from '../lib/api';
 import { useSession } from '../lib/session';
 import { Brand } from '../components/AppShell';
 import { Button, Select, Skeleton } from '../components/ui';
+import { useToast } from '../components/toast';
 
 type LoginUser = User & { persona_code: PersonaCode; persona_name: string; persona_title?: string; summary?: string };
 const LAST = 'dsh.lastUser';
 
 export default function LoginPage() {
   const { login, session } = useSession();
+  const toast = useToast();
   const nav = useNavigate();
   const loc = useLocation() as { state?: { from?: string } };
   const [data, setData] = useState<{ personas: Persona[]; users: LoginUser[] } | null>(null);
@@ -43,8 +45,12 @@ export default function LoginPage() {
     if (!userId) return;
     setBusy(kind); setError(null);
     try {
-      await login(userId);
+      const s = await login(userId);
       try { localStorage.setItem(LAST, userId); } catch { /* ignore */ }
+      // v1.4: say who you are now, and how many access requests wait for you.
+      const approver = s.actions.includes('access.approve') || s.actions.includes('access.review');
+      const waiting = approver ? await get<{ inbox: number }>('/access/summary').then((x) => x.inbox).catch(() => 0) : 0;
+      toast.success(`Signed in as ${s.user.full_name} (${s.persona.name})${waiting ? ` — ${waiting} request${waiting === 1 ? '' : 's'} waiting for you` : ''}`);
       nav(loc.state?.from && loc.state.from !== '/login' ? loc.state.from : '/', { replace: true });
     } catch (e) {
       setError((e as Error).message || 'Sign-in failed.');

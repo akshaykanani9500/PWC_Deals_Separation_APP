@@ -10,6 +10,7 @@ import type { AuthContext } from '../auth-types';
 import type { Lang, PersonaCode, Project } from '../../../shared/types';
 import { PERMISSIONS, type Action } from '../../../shared/permissions';
 import { canAddActivityToStage, canAddTaskToActivity, canEditActivity, canEditTask } from '../services/access';
+import { rowCode } from '../services/grants';
 import type { Scope, ScopedData } from './data';
 import { userName } from './data';
 import { t } from './lang';
@@ -55,9 +56,9 @@ export async function capabilities(db: Db, auth: AuthContext, scope: Scope): Pro
     closeProject: open && has(auth, 'project.close'),
     editStages: open && has(auth, 'stage.edit'),
     approveGate: open && has(auth, 'stage.gate.approve'),
-    addActivity: scope.stage ? await canAddActivityToStage(db, auth, scope.stage) : open && has(auth, 'activity.edit') && auth.code !== 'LEAD',
-    editActivity: scope.activity ? await canEditActivity(db, auth, scope.activity) : open && has(auth, 'activity.edit') && auth.code !== 'LEAD',
-    addTask: scope.activity ? await canAddTaskToActivity(db, auth, scope.activity) : open && has(auth, 'task.edit') && auth.code !== 'LEAD',
+    addActivity: scope.stage ? await canAddActivityToStage(db, auth, scope.stage) : open && has(auth, 'activity.edit') && rowCode(auth) !== 'LEAD',
+    editActivity: scope.activity ? await canEditActivity(db, auth, scope.activity) : open && has(auth, 'activity.edit') && rowCode(auth) !== 'LEAD',
+    addTask: scope.activity ? await canAddTaskToActivity(db, auth, scope.activity) : open && has(auth, 'task.edit') && rowCode(auth) !== 'LEAD',
     editTask: editTaskInfo ? editTaskInfo.canEdit : open && (has(auth, 'task.edit') || has(auth, 'task.edit.own')),
     taskFields: editTaskInfo ? (editTaskInfo.editableFields as string[]) : [],
     ownTasksOnly: !has(auth, 'task.edit') && has(auth, 'task.edit.own'),
@@ -79,7 +80,7 @@ export async function capabilities(db: Db, auth: AuthContext, scope: Scope): Pro
     put(flags.closeProject, 'close the project (Close project button)', `close the project (${rolesWith('project.close').join(' or ')} on this project)`);
     put(flags.editStages, 'add, rename, reorder or remove stages (Edit stages)', `change stages (${rolesWith('stage.edit').join(' or ')})`);
     put(flags.approveGate, 'approve stage gates', `approve stage gates (${rolesWith('stage.gate.approve').join(', ')})`);
-    put(flags.addActivity, 'add or edit activities here (Edit activities)', auth.code === 'LEAD'
+    put(flags.addActivity, 'add or edit activities here (Edit activities)', rowCode(auth) === 'LEAD'
       ? 'add or edit activities outside the stages you lead'
       : `add or edit activities (${rolesWith('activity.edit').join(', ')})`);
     if (scope.activity || scope.task) put(flags.addTask, 'add tasks to this activity (Add task)', 'add tasks to this activity');
@@ -101,7 +102,11 @@ export async function capabilities(db: Db, auth: AuthContext, scope: Scope): Pro
   if (flags.audit) can.push('see the audit log');
   if (flags.admin) can.push('use the Data admin page');
   if (projectClosed) cannot.push('make changes - this project is closed (read-only)');
-  return { role: ROLE_NAME[auth.code], can: can.filter(Boolean), cannot: cannot.filter(Boolean), flags };
+  // v1.4: an acting role (approved grant) on this project changes what the user can do here; say so.
+  const actingHere = auth.actingCode && scope.project && auth.grantProjectId === scope.project.project_id;
+  if (actingHere) can.unshift(`act as ${ROLE_NAME[auth.actingCode!]} on this project (approved acting role; gate approvals, close-out and access approvals stay with the real role holders)`);
+  const role = actingHere ? `${ROLE_NAME[auth.code]}, acting as ${ROLE_NAME[auth.actingCode!]} on this project` : ROLE_NAME[auth.code];
+  return { role, can: can.filter(Boolean), cannot: cannot.filter(Boolean), flags };
 }
 
 /** Text block for prompts. */

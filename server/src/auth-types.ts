@@ -14,6 +14,8 @@ export interface AuthContext {
   /** Project whose grants are currently merged into `actions` (null = none). */
   grantProjectId?: string | null;
   grantIds?: string[];
+  /** v1.4: acting role on `grantProjectId` (from an active role.* grant). Row rules use it instead of `code`. */
+  actingCode?: PersonaCode;
 }
 
 export type AuthedRequest = Request & { auth: AuthContext };
