@@ -30,7 +30,10 @@ function scopeTitle(s: Scope): string {
 
 const DECISION = /\b(agreed|approved|decided|go decision|signed off|sign-off received)\b/i;
 
-function deterministicSummary(data: ScopedData, comms: Awaited<ReturnType<typeof loadComms>>, notes: Awaited<ReturnType<typeof loadNotes>>, lang: Lang): Omit<SummaryResponse, 'mode'> {
+function deterministicSummary(data: ScopedData, allComms: Awaited<ReturnType<typeof loadComms>>, notes: Awaited<ReturnType<typeof loadNotes>>, lang: Lang): Omit<SummaryResponse, 'mode'> {
+  // v1.4.1: only communications that already happened count (a meeting scheduled for next week is not the "latest" contact)
+  const nowIso = new Date().toISOString();
+  const comms = allComms.filter((c) => !c.occurred_at || c.occurred_at <= nowIso);
   const tasks = data.tasks;
   const done = tasks.filter((x) => x.status === 'Done');
   const open = tasks.filter((x) => x.status !== 'Done');

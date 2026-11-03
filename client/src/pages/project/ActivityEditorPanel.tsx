@@ -5,7 +5,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2, ChevronRight, Sparkles } from 'lucide
 import type { Activity, StageDetail, SuggestResponse } from '@shared/types';
 import { PRIORITY } from '@shared/schema';
 import { api, post, patch, del } from '../../lib/api';
-import { useUsers } from '../../hooks/useUsers';
+import { useTeam } from '../../hooks/useTeam';
 import { SidePanel, ConfirmDialog } from '../../components/SidePanel';
 import { AiLabel, AiStrip, Button, Field, Input, Select, Textarea } from '../../components/ui';
 import { useToast } from '../../components/toast';
@@ -20,7 +20,7 @@ export function ActivityEditorPanel({ open, onClose, stageDetail, projectId, onS
   open: boolean; onClose: () => void; stageDetail: StageDetail; projectId: string; onSaved: () => void;
 }) {
   const toast = useToast();
-  const users = useUsers();
+  const users = useTeam(projectId);
   const [rows, setRows] = useState<Row[]>([]);
   const [removed, setRemoved] = useState<Row[]>([]);
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -123,7 +123,7 @@ export function ActivityEditorPanel({ open, onClose, stageDetail, projectId, onS
                     <Field label="Description" className="col-span-3"><Textarea value={r.description} disabled={locked} onChange={(e) => set(r.key, { description: e.target.value })} /></Field>
                     <Field label="Owner">
                       <Select value={r.owner_user_id} disabled={locked} onChange={(e) => set(r.key, { owner_user_id: e.target.value })}>
-                        <option value="">No owner</option>{users.filter((u) => ['PARTNER', 'MANAGER', 'LEAD', 'ANALYST'].includes(u.persona_code)).map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name}</option>)}
+                        <option value="">No owner</option>{users.filter((u) => ['PARTNER', 'MANAGER', 'LEAD', 'ANALYST', 'EXEC'].includes(u.persona_code)).map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name}</option>)}
                       </Select>
                     </Field>
                     <Field label="Priority"><Select value={r.priority} disabled={locked} onChange={(e) => set(r.key, { priority: e.target.value })}><option value="">Not set</option>{PRIORITY.map((p) => <option key={p}>{p}</option>)}</Select></Field>

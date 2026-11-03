@@ -287,3 +287,50 @@ describe('v1.4 fix round (C)', () => {
     expect(r.inputSignals!.map((s) => s.id)).not.toContain('india_dpdp');
   });
 });
+
+describe('v1.4.1 final fixes (C)', () => {
+  let t: Awaited<ReturnType<typeof makeTestApp>>;
+  beforeAll(async () => { t = await makeTestApp(); });
+
+  it('Suggest tasks follows the typed title (SAP clone window -> ERP clone tasks)', async () => {
+    const act = (await db.find<Activity>('activities', (a) => a.project_id === 'PRJ-0001'))[0];
+    const r = await run({ kind: 'tasks', activityId: act.activity_id, current: { activity_name: act.name, title: 'Book SAP clone window with Basis team' } });
+    const titles = (r.draft as any[]).map((x) => x.title).join(' | ');
+    expect(titles).toMatch(/ERP clone|ERP cut-over|selective data deletion/i);
+    expect(r.rationale).toMatch(/what you typed/);
+    expect((r.draft as any[]).every((x) => x.title !== 'Book SAP clone window with Basis team')).toBe(true);
+  });
+
+  it('effort estimates use one basis across options', async () => {
+    const r = await run({ kind: 'project', hints: { deal_type: 'TSA exit', industry: 'Financial Services & Payments' } });
+    const perTask = r.options!.map((o) => o.stats!.hours! / o.stats!.tasks!);
+    for (const x of perTask) expect(x).toBeLessThan(12);
+  });
+
+  it('assignees and owners must be on the project team (task create / bulk / patch, activity and stage owner)', async () => {
+    const mgr = await t.as(APP.ananya);
+    const act = (await t.db.find<Activity>('activities', (a) => a.project_id === 'PRJ-0001'))[0];
+    const client = APP.lisa; // client viewer staffed on PRJ-0001
+    const exec = APP.exec; // not on the team
+    for (const who of [client, exec]) {
+      const r = await mgr.post(`/api/activities/${act.activity_id}/tasks`, { title: 'Assignee check', assignee_user_id: who });
+      expect(r.status).toBe(400);
+    }
+    expect((await mgr.post(`/api/activities/${act.activity_id}/tasks/bulk`, { tasks: [{ title: 'x', assignee_user_id: client }] })).status).toBe(400);
+    const ok = await mgr.post(`/api/activities/${act.activity_id}/tasks`, { title: 'Assignee check ok', assignee_user_id: APP.neha });
+    expect(ok.status).toBe(201);
+    expect((await mgr.patch(`/api/tasks/${ok.body.task_id}`, { assignee_user_id: client })).status).toBe(400);
+    expect((await mgr.patch(`/api/tasks/${ok.body.task_id}`, { status: 'In Progress' })).status).toBe(200);
+    expect((await mgr.patch(`/api/activities/${act.activity_id}`, { owner_user_id: exec })).status).toBe(400);
+    expect((await mgr.patch(`/api/stages/${act.stage_id}`, { owner_user_id: client })).status).toBe(400);
+    expect((await mgr.patch(`/api/stages/${act.stage_id}`, { owner_user_id: APP.ananya })).status).toBe(200);
+  });
+
+  it('comms people: client viewers are not "PwC", and members who are also contacts appear once', async () => {
+    const ctx = await (await t.as(APP.ananya)).post('/api/ai/comms/context', { scope: 'project', id: 'PRJ-0001' });
+    const lisa = ctx.body.people.find((p: any) => p.id === APP.lisa);
+    if (lisa) expect(lisa.side).toBe('Client');
+    const names = ctx.body.people.map((p: any) => p.name.toLowerCase());
+    expect(new Set(names).size).toBe(names.length);
+  });
+});

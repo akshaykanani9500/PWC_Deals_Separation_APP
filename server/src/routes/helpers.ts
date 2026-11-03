@@ -1,6 +1,6 @@
 import type { Db } from '../db/Db';
 import type { AuthContext } from '../auth-types';
-import type { Persona, User, Project, Stage, Activity, Task } from '../../../shared/types';
+import type { Persona, User, Project, ProjectMember, Stage, Activity, Task } from '../../../shared/types';
 import { HttpError } from '../errors';
 import { assertProjectAccess } from '../services/access';
 import { audit } from '../services/audit';
@@ -55,4 +55,31 @@ export const byOrder = (a: { sort_order?: number }, b: { sort_order?: number }) 
 export async function denyRow(db: Db, auth: AuthContext, msg: string, d: { projectId: string; entity: string; id?: string }): Promise<never> {
   await audit(db, auth, 'access.denied', { type: d.entity, id: d.id, projectId: d.projectId, details: { reason: msg } });
   throw new HttpError(403, msg, 'FORBIDDEN');
+}
+
+
+/**
+ * v1.4.1: people who may own or be assigned work on a project: current internal team members (member rows) plus the
+ * named Partner / Manager. Client viewers never qualify; inactive users never qualify.
+ */
+export async function teamAssignees(db: Db, projectId: string): Promise<Set<string>> {
+  const [project, members, users, personas] = await Promise.all([
+    db.get<Project>('projects', projectId), db.find<ProjectMember>('project_members', (m) => m.project_id === projectId),
+    db.all<User>('users'), db.all<Persona>('personas'),
+  ]);
+  const code = new Map(personas.map((p) => [p.persona_id, p.code]));
+  const ok = new Set(users.filter((u) => u.is_active !== 'N' && code.get(u.persona_id) !== 'CLIENT').map((u) => u.user_id));
+  const ids = new Set<string>();
+  for (const id of [...members.map((m) => m.user_id), project?.partner_user_id, project?.manager_user_id]) if (id && ok.has(id)) ids.add(id);
+  return ids;
+}
+
+/** 400 unless every given person id (owner / assignee) is on the project team. Empty / null values are fine. */
+export async function assertTeamIds(db: Db, projectId: string, ids: (string | null | undefined)[], what = 'The person'): Promise<void> {
+  const want = ids.filter((x): x is string => !!x);
+  if (!want.length) return;
+  const team = await teamAssignees(db, projectId);
+  if (want.some((id) => !team.has(id))) {
+    throw new HttpError(400, `${what} must be a current member of the project team (internal staff, not client viewers). Add them to the team first.`, 'VALIDATION');
+  }
 }

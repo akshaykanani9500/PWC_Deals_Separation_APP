@@ -326,7 +326,7 @@ export default function AiActions({ scope, id, onLogged }: AiActionsProps) {
                         <input type="checkbox" className="mt-0.5 accent-[#5B3FD0]" checked={invitees.has(p.id)} disabled={isClient}
                           onChange={(e) => setInvitees((s) => { const n = new Set(s); if (e.target.checked) n.add(p.id); else n.delete(p.id); return n; })} aria-label={`Invite ${p.name}`} />
                         <span className="min-w-0"><span className="font-medium">{p.name}</span>
-                          <span className="block truncate text-[11.5px] text-ink-muted">{[p.kind === 'team' ? 'PwC team' : p.side, p.role, p.org && p.kind === 'contact' ? p.org : ''].filter(Boolean).join(' · ')}{p.email ? ` · ${p.email}` : ''}</span></span>
+                          <span className="block truncate text-[11.5px] text-ink-muted">{[p.side === 'PwC' || (p.kind === 'team' && !p.side) ? 'PwC team' : p.side ? `${p.side}${p.kind === 'contact' && p.side !== 'Client' ? ' contact' : ''}` : '', p.role, p.org && p.kind === 'contact' && p.org !== p.side ? p.org : ''].filter(Boolean).join(' · ')}{p.email ? ` · ${p.email}` : ''}</span></span>
                       </label>
                     </li>
                   ))}

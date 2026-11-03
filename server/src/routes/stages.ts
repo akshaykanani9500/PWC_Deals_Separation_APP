@@ -9,7 +9,7 @@ import { ensureAction, hasAction } from '../middleware/auth';
 import { canAddActivityToStage, canEditActivity, canEditStage } from '../services/access';
 import { audit } from '../services/audit';
 import { rollupProject } from '../services/rollup';
-import { assertOpen, byOrder, denyRow, loadStage, userIndex } from './helpers';
+import { assertOpen, byOrder, denyRow, loadStage, userIndex, assertTeamIds } from './helpers';
 import { createActivityTree, stageTree } from './projects';
 
 const optStr = z.string().optional().nullable();
@@ -44,6 +44,7 @@ export function stagesRouter(db: Db): Router {
       name: z.string().min(1).max(120).optional(), description: optStr, gate_criteria: optStr, owner_user_id: optStr, start_date: optStr,
       end_date: optStr, sort_order: z.coerce.number().optional(), gate_approver_id: optStr,
     }).parse(req.body);
+    if (patch.owner_user_id && patch.owner_user_id !== stage.owner_user_id) await assertTeamIds(db, project.project_id, [patch.owner_user_id], 'The stage owner');
     const updated = await db.update<Stage>('stages', stage.stage_id, patch as Partial<Stage>, auth.user.user_id);
     await audit(db, auth, 'stage.update', { type: 'stage', id: stage.stage_id, projectId: project.project_id, details: patch });
     res.json(updated);

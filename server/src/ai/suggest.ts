@@ -63,6 +63,19 @@ function fromPlaybook(a: PlaybookActivity): DraftActivity {
   return { name: a.name, description: a.description, priority: a.priority, tasks: a.tasks.map(([title, priority, d1, h]) => ({ title, priority, day1_critical: d1, effort_hours: h })) };
 }
 
+/**
+ * v1.4.1: one estimation basis for every option. Past-deal hours are deal-specific (e.g. 34 applications), so a task
+ * from the knowledge hub gets the playbook estimate of its closest playbook task, else a priority-based default.
+ */
+const DEFAULT_HOURS: Record<string, number> = { Critical: 10, High: 8, Medium: 5, Low: 2 };
+let pbTasks: { title: string; h: number }[] | null = null;
+export function estimateHours(title: string, priority?: string): number {
+  pbTasks ??= allPlaybookActivities().flatMap((a) => a.tasks.map(([t, , , h]) => ({ title: t, h })));
+  let best = 0; let h = 0;
+  for (const t of pbTasks) { const sc = similar(t.title, title); if (sc > best) { best = sc; h = t.h; } }
+  return best >= 0.6 ? h : DEFAULT_HOURS[priority ?? 'Medium'] ?? 5;
+}
+
 function parsePayload(k: KnowledgeItem): any {
   try { return k.payload ? JSON.parse(k.payload) : null; } catch { return null; }
 }
@@ -75,7 +88,7 @@ function knowledgeActivities(k: KnowledgeItem): DraftActivity[] {
     description: a.description ?? `From a past ${k.deal_type ?? 'deal'} (${k.source_label ?? 'knowledge hub'}).`,
     priority: (PRIORITY as readonly string[]).includes(a.priority) ? a.priority : 'Medium',
     tasks: (Array.isArray(a.tasks) ? a.tasks : []).filter((t: any) => t && typeof t.title === 'string').map((t: any) => ({
-      title: generalise(t.title), priority: (PRIORITY as readonly string[]).includes(t.priority) ? t.priority : 'Medium', day1_critical: t.day1_critical === 'Y' ? 'Y' : 'N', effort_hours: Number(t.effort_hours ?? 4),
+      title: generalise(t.title), priority: (PRIORITY as readonly string[]).includes(t.priority) ? t.priority : 'Medium', day1_critical: t.day1_critical === 'Y' ? 'Y' : 'N', effort_hours: estimateHours(generalise(t.title), t.priority),
     })),
   }));
 }
@@ -391,9 +404,30 @@ async function deterministic(ctx: Ctx): Promise<{ options: SuggestOption[]; reco
       const actName = String(req.current?.activity_name ?? act.name);
       const existing = await existingNames(ctx, 'tasks');
       const bT = newBuild();
-      const tasks = tasksForActivity(ctx, bT, actName, existing, FULL);
+      // v1.4.1: what the user typed in the Add task form (title / description) steers the list
+      const typedText = [req.current?.title, req.current?.description].filter((x) => typeof x === 'string' && x.trim()).join('. ');
+      const typedHits = detectSignals(typedText);
+      const typedTitle = typeof req.current?.title === 'string' ? req.current.title.trim() : '';
+      const fromTyped: DraftTask[] = [];
+      if (typedText) {
+        const pool = [
+          ...typedHits.flatMap((h) => Object.values(h.signal.acts).flat().flatMap((a) => fromPlaybook(a).tasks.map((t) => ({ t, s: similar(t.title, typedText) + 0.3, sig: h.signal.label })))),
+          ...allPlaybookActivities(ctx.industry).flatMap((a) => fromPlaybook(a).tasks.map((t) => ({ t, s: similar(t.title, typedText), sig: '' }))),
+        ].filter((x) => x.s >= 0.34).sort((x, y) => y.s - x.s);
+        const names = [...existing, ...(typedTitle ? [typedTitle] : [])];
+        for (const x of pool) {
+          if (fromTyped.length >= 4) break;
+          if (isDup(x.t.title, names)) continue;
+          fromTyped.push({ ...x.t, description: `Related to "${typedTitle || typedText.slice(0, 60)}".` }); names.push(x.t.title);
+          if (x.sig) bT.signals.add(x.sig);
+        }
+      }
+      const rest = tasksForActivity(ctx, bT, actName, [...existing, ...fromTyped.map((t) => t.title), ...(typedTitle ? [typedTitle] : [])], FULL);
+      const tasks = [...fromTyped, ...rest].slice(0, 8);
       const lean = leanTasks(tasks);
-      const opts = [option(ctx, 'tailored', 'Full task list', tasks.length ? `${tasks.length} tasks typically needed for "${actName}" that are not on the list yet.` : 'The activity already has the typical tasks.', tasks, bT, { recommended: true })];
+      const typedNote = fromTyped.length ? ` ${fromTyped.length} of them follow from what you typed ("${(typedTitle || typedText).slice(0, 60)}")${typedHits.length ? `: ${typedHits.map((h) => h.signal.label).join(', ')}` : ''}.` : '';
+      const opts = [option(ctx, 'tailored', 'Full task list', tasks.length ? `${tasks.length} tasks for "${actName}" that are not on the list yet.${typedNote}` : 'The activity already has the typical tasks.', tasks, bT, { recommended: true })];
+      if (typedHits.length) opts[0].fromInputs = [...typedHits.map((h) => `"${h.matched.join('", "')}" → ${h.signal.adds}`), ...opts[0].fromInputs.filter((x) => !typedHits.some((h) => x.includes(h.signal.adds)))];
       if (lean.length && lean.length < tasks.length) opts.push(option(ctx, 'lean', 'Lean / fast-track', `Only the ${lean.length} Critical, High or Day-1 tasks.`, lean, bT));
       return { options: opts, recommendedId: 'tailored' };
     }
@@ -503,7 +537,7 @@ function projectFields(ctx: Ctx): { options: SuggestOption[]; recommendedId: str
   for (const h of hits) b.signals.add(h.signal.label);
   const blanksOnly = Object.fromEntries(Object.entries(all).filter(([k]) => k === 'risks' || !str(k) || (k === 'apps_in_scope' || k === 'sites_in_scope' || k === 'employees_conveying')));
   const n = Object.keys(all).length - 1;
-  const opts = [option(ctx, 'tailored', 'Recommended', `${n} field${n === 1 ? '' : 's'} to improve${hits.length ? `, based on ${hits.map((h) => h.signal.label).join(', ')} in your inputs` : ''}. Apply field by field, then save.`, all, b, { recommended: true, fieldReasons: reasons })];
+  const opts = [option(ctx, 'tailored', 'All suggestions', `${n} field${n === 1 ? '' : 's'} to improve${hits.length ? `, based on ${hits.map((h) => h.signal.label).join(', ')} in your inputs` : ''}. Apply field by field, then save.`, all, b, { recommended: true, fieldReasons: reasons })];
   if (JSON.stringify(blanksOnly) !== JSON.stringify(all)) {
     opts.push(option(ctx, 'blanks', 'Only fill empty fields', 'Keeps everything you typed; only fills fields that are empty.', blanksOnly, b, { fieldReasons: reasons }));
   }

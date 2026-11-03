@@ -192,10 +192,11 @@ export default function DashboardPage() {
               const spec = custom[l.i];
               const kpi = spec.chart === 'kpi';
               return (
-                <div key={l.i} className={`card flex flex-col overflow-hidden ${customize ? 'ring-1 ring-brand-ring/60' : ''}`} data-testid="custom-widget" aria-label={spec.title}>
+                <div key={l.i} className={`card relative flex flex-col overflow-hidden ${customize ? 'ring-1 ring-brand-ring/60' : ''}`} data-testid="custom-widget" aria-label={spec.title}>
                   {(!kpi || customize) && (
-                    <div className={`widget-handle flex items-center justify-between gap-2 px-4 pt-3 ${customize ? 'cursor-move' : ''}`}>
-                      <h3 className="truncate text-[14px] font-semibold">{spec.title}</h3>
+                    // KPI tiles: the drag bar floats over the tile so the number keeps its full height in customize mode
+                    <div className={kpi ? 'widget-handle absolute inset-x-0 top-0 z-10 flex h-7 cursor-move items-center justify-end gap-2 bg-gradient-to-b from-surface to-transparent px-2' : `widget-handle flex items-center justify-between gap-2 px-4 pt-3 ${customize ? 'cursor-move' : ''}`}>
+                      {!kpi && <h3 className="truncate text-[14px] font-semibold">{spec.title}</h3>}
                       {customize && (
                         <span className="flex shrink-0 gap-0.5">
                           <button onClick={() => setBuilder({ open: true, id: l.i })} onMouseDown={(e) => e.stopPropagation()} className="rounded p-0.5 text-ink-muted hover:bg-sunken hover:text-ink" aria-label={`Edit ${spec.title}`}><Pencil size={13} /></button>
@@ -204,24 +205,24 @@ export default function DashboardPage() {
                       )}
                     </div>
                   )}
-                  <div className={`min-h-0 flex-1 ${kpi && !customize ? '' : 'overflow-auto px-4 pb-3 pt-2'}`}><CustomWidgetBody spec={spec} version={version} /></div>
+                  <div className={`min-h-0 flex-1 ${kpi ? '' : 'overflow-auto px-4 pb-3 pt-2'}`}><CustomWidgetBody spec={spec} version={version} /></div>
                 </div>
               );
             }
             const w = WIDGETS.find((d) => d.id === l.i)!;
             const isKpi = w.id.startsWith('kpi') || w.id.startsWith('fin-');
             return (
-              <div key={l.i} className={`card flex flex-col overflow-hidden ${customize ? 'ring-1 ring-brand-ring/60' : ''}`}>
+              <div key={l.i} className={`card relative flex flex-col overflow-hidden ${customize ? 'ring-1 ring-brand-ring/60' : ''}`}>
                 {(!isKpi || customize) && (
-                  <div className={`widget-handle flex items-center justify-between px-4 pt-3 ${customize ? 'cursor-move' : ''}`}>
-                    <h3 className="text-[14px] font-semibold">{w.title}</h3>
+                  <div className={isKpi ? 'widget-handle absolute inset-x-0 top-0 z-10 flex h-7 cursor-move items-center justify-end px-2' : `widget-handle flex items-center justify-between px-4 pt-3 ${customize ? 'cursor-move' : ''}`}>
+                    {!isKpi && <h3 className="text-[14px] font-semibold">{w.title}</h3>}
                     {customize && (
                       <button onClick={() => removeWidget(l.i, w.title)} onMouseDown={(e) => e.stopPropagation()}
                         className="rounded p-0.5 text-ink-muted hover:bg-sunken hover:text-rose" aria-label={`Remove ${w.title}`}><X size={14} /></button>
                     )}
                   </div>
                 )}
-                <div className={`min-h-0 flex-1 ${isKpi && !customize ? '' : 'overflow-auto px-4 pb-3 pt-2'}`}>
+                <div className={`min-h-0 flex-1 ${isKpi ? '' : 'overflow-auto px-4 pb-3 pt-2'}`}>
                   {w.render(data, userMap, { onFilter: applyQuick, userName: session?.user.full_name, customizing: customize })}
                 </div>
               </div>
