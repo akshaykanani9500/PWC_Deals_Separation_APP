@@ -101,8 +101,8 @@ export default function AdminPage() {
         <h2 id="danger-h" className="flex items-center gap-2 text-[14px] font-semibold text-rose"><AlertTriangle size={15} aria-hidden /> Danger zone</h2>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <p className="max-w-[70ch] text-[13px] text-ink-soft">
-            <b>Reset demo data</b> wipes every table{data ? ` in the ${data.driver === 'sheets' ? 'Google Sheet' : 'local database'}` : ''} and loads the demo again, exactly like a fresh start
-            (projects, plans, finance, access requests). Everything people changed is lost. People stay signed in.
+            <b>Reset demo data</b> replaces every table{data ? ` in the ${data.driver === 'sheets' ? 'Google Sheet' : 'local database'}` : ''} and loads the demo again, exactly like a fresh start
+            (projects, plans, finance, access requests). Everything people changed is lost; the audit log is kept and the reset is recorded in it. People stay signed in.
           </p>
           <Button variant="danger" icon={<RotateCcw size={14} />} onClick={() => setResetOpen(true)}>Reset demo data</Button>
         </div>
@@ -137,7 +137,7 @@ function ResetDialog({ open, onCancel, onDone }: { open: boolean; onCancel: () =
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink/30 p-4" onClick={() => !busy && onCancel()}>
       <div className="w-full max-w-md rounded-xl bg-surface p-5 shadow-pop" role="alertdialog" aria-modal="true" aria-labelledby="reset-h" onClick={(e) => e.stopPropagation()}>
         <h3 id="reset-h" className="text-[15px] font-semibold">Reset all data to the demo?</h3>
-        <p className="mt-2 text-[13px] text-ink-soft">This replaces every table with the demo data. It cannot be undone. Download the workbook first if you want a copy.</p>
+        <p className="mt-2 text-[13px] text-ink-soft">This replaces every table with the demo data, except the audit log, which is kept (the reset is added to it). It cannot be undone. Download the workbook first if you want a copy.</p>
         <label className="mt-3 block">
           <span className="label">Type RESET to confirm</span>
           <Input value={word} onChange={(e) => setWord(e.target.value)} autoFocus autoComplete="off" onKeyDown={(e) => { if (e.key === 'Enter' && word === 'RESET') go(); }} />

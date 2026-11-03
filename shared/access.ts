@@ -214,7 +214,7 @@ export function approvalMatrix() {
 export const APPROVAL_RULES: string[] = [
   'Access is for one person on one project, for 7, 30 or 90 days (some items 30 days at most).',
   'Level 1: a Partner or Manager staffed on the project who holds the permission themselves and is more senior than the person getting it. Finance edits and acting roles need the Engagement Partner.',
-  'A Partner or Manager who sponsors access for their team member counts as level 1. When level 1 is all an item needs, it goes live straight away.',
+  'A Partner or Manager staffed on the project who sponsors access for their team member counts as level 1. When level 1 is all an item needs, it goes live straight away. The Deals Leader does not sponsor; they only step in on escalated requests.',
   'Level 2: Risk & Quality checks need-to-know, clean team and confidentiality for the riskier items (finance edits, acting roles, finance on clean-team deals). It must be someone other than the requester and the level-1 approver.',
   `A request waiting ${ESCALATE_AFTER_DAYS} days or more is escalated: it is highlighted and the Deals Leader can also give level 1 when they qualify. After ${EXPIRE_PENDING_AFTER_DAYS} days without a decision it expires; ask again if it is still needed.`,
   'A request is refused up front when nobody could approve it (for example no Partner on the team); the message says who must be added.',

@@ -200,3 +200,8 @@ Rules: `shared/access.ts` (`GRANTABLE[].approvals` = `L1` | `L1+L2` | `L1+L2_IF_
 - `POST /admin/db/reset` (admin.data) body `{ confirm: 'RESET' }` → wipes every table and reloads `buildSeed()` (same as a fresh start, local or Sheets via `replaceTable`), then audits `admin.db.reset`. Returns `{ ok, driver, rows }`. 400 without the confirm word, 403 for other roles. Tokens stay valid (user ids are stable).
 
 **v1.4 (B fix).** Bank-request rights use the role on the project (acting roles count): draft/save/RM replied = finance.view + Partner or Manager; Sent/Term sheet/Declined additionally need finance.edit. Saved subject/body/purpose with an email address or phone number -> 400. Uses = max(cost lines, one-time estimate); the remainder appears as an "Unallocated estimate" row, and `projects.funding_gap` is re-synced after cost/funding changes, finance setup and project finance edits (kept as typed while there are no cost or funding lines).
+
+### v1.4 (A fix)
+- Acting roles (role.MANAGER / role.PARTNER grants) may edit plan details (description, dates, scope, status other than Closed) but get **403** (audited as `access.denied`) for changing `partner_user_id`, `manager_user_id` or `clean_team_required`, deleting the project, or adding / removing team members. `GET /projects/:id` adds `perms.canChangeStaffing` (false when `project.edit` comes only from a grant).
+- Sponsoring access needs the sponsor to be staffed or named on the project; the Deals Leader never sponsors and only gives level 1 on escalated requests. `perms.canSponsorAccess` follows the same rule.
+- `POST /admin/db/reset` keeps every existing `audit_log` row and appends the demo history (re-numbered) plus the `admin.db.reset` entry.

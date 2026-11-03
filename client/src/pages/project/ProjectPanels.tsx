@@ -29,6 +29,8 @@ export function EditProjectPanel({ open, detail, onClose, onSaved }: { open: boo
   const toast = useToast();
   const { can } = useSession();
   const users = useUsers();
+  // v1.4: acting roles edit plan details only; staffing and the clean-team flag stay with the real Partner / Manager.
+  const staffLock = detail.perms.canChangeStaffing === false && detail.perms.canEditProject ? 'Fixed while you act in this role' : undefined;
   const p = detail.project as unknown as Record<string, unknown>;
   const finEditable = (detail.perms.canEditFinance ?? can('finance.edit')) && detail.perms.canViewFinance;
   const base = useMemo(() => {
@@ -121,15 +123,15 @@ export function EditProjectPanel({ open, detail, onClose, onSaved }: { open: boo
         <Field label="RAG (normally calculated)"><Select value={f.rag} onChange={(e) => set('rag', e.target.value)}><option value="">Auto</option>{RAG.map((d) => <option key={d}>{d}</option>)}</Select></Field>
         <Field label="Start date"><Input type="date" value={f.start_date} onChange={(e) => set('start_date', e.target.value)} /></Field>
         <Field label="Target close"><Input type="date" value={f.target_close_date} onChange={(e) => set('target_close_date', e.target.value)} /></Field>
-        <Field label="Partner"><Select value={f.partner_user_id} onChange={(e) => set('partner_user_id', e.target.value)}><option value="">Not assigned</option>{partners.map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name}</option>)}</Select></Field>
-        <Field label="Manager"><Select value={f.manager_user_id} onChange={(e) => set('manager_user_id', e.target.value)}><option value="">Not assigned</option>{managers.map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name}</option>)}</Select></Field>
+        <Field label="Partner" hint={staffLock}><Select disabled={!!staffLock} value={f.partner_user_id} onChange={(e) => set('partner_user_id', e.target.value)}><option value="">Not assigned</option>{partners.map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name}</option>)}</Select></Field>
+        <Field label="Manager" hint={staffLock}><Select disabled={!!staffLock} value={f.manager_user_id} onChange={(e) => set('manager_user_id', e.target.value)}><option value="">Not assigned</option>{managers.map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name}</option>)}</Select></Field>
         <Field label="Applications in scope"><Input type="number" min={0} value={f.apps_in_scope} onChange={(e) => set('apps_in_scope', e.target.value)} /></Field>
         <Field label="Sites in scope"><Input type="number" min={0} value={f.sites_in_scope} onChange={(e) => set('sites_in_scope', e.target.value)} /></Field>
         <Field label="Employees conveying"><Input type="number" min={0} value={f.employees_conveying} onChange={(e) => set('employees_conveying', e.target.value)} /></Field>
         <Field label="Sensitivity"><Select value={f.sensitivity} onChange={(e) => set('sensitivity', e.target.value)}><option value="">Not set</option>{SENSITIVITY.map((d) => <option key={d}>{d}</option>)}</Select></Field>
         <Field label="Data residency"><Input value={f.data_residency} onChange={(e) => set('data_residency', e.target.value)} /></Field>
         <Field label="Tags" hint="Comma-separated"><Input value={f.tags} onChange={(e) => set('tags', e.target.value)} /></Field>
-        <div className="col-span-2"><Checkbox checked={f.clean_team_required === 'Y'} onChange={(v) => set('clean_team_required', v ? 'Y' : 'N')} label="Clean team required before close" /></div>
+        <div className="col-span-2"><Checkbox disabled={!!staffLock} checked={f.clean_team_required === 'Y'} onChange={(v) => set('clean_team_required', v ? 'Y' : 'N')} label="Clean team required before close" /></div>
       </div>
       {detail.perms.canViewFinance && (
         <div className="mt-5 rounded-lg border border-line p-3">
@@ -149,7 +151,8 @@ export function EditProjectPanel({ open, detail, onClose, onSaved }: { open: boo
 export function TeamPanel({ open, detail, onClose, onSaved, onGiveAccess }: { open: boolean; detail: ProjectDetail; onClose: () => void; onSaved: () => void; onGiveAccess?: (userId: string) => void }) {
   const toast = useToast();
   const users = useUsers();
-  const canEdit = detail.perms.canEditProject;
+  const canEdit = detail.perms.canEditProject && detail.perms.canChangeStaffing !== false;
+  const actingOnly = detail.perms.canEditProject && detail.perms.canChangeStaffing === false;
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState<string>('Analyst');
   const [workstream, setWorkstream] = useState('');
@@ -224,7 +227,7 @@ export function TeamPanel({ open, detail, onClose, onSaved, onGiveAccess }: { op
           </div>
           <Button className="mt-3" variant="primary" icon={<UserPlus size={14} />} onClick={add} loading={busy} disabled={!userId}>Add to team</Button>
         </div>
-      ) : <p className="mt-4 text-[12.5px] text-ink-muted">Only the engagement partner or manager can change the team.</p>}
+      ) : <p className="mt-4 text-[12.5px] text-ink-muted">{actingOnly ? 'You act in this role through an approved access request, so the team stays as the Engagement Partner and Manager set it. Ask them to add or remove people.' : 'Only the engagement partner or manager can change the team.'}</p>}
       <ConfirmDialog open={!!confirm} title="Remove from the team?" confirmLabel="Remove" body="They lose access to this project straight away. Their pending access requests here are cancelled and any extra access is revoked." onCancel={() => setConfirm(null)} onConfirm={() => confirm && remove(confirm)} />
     </SidePanel>
   );
