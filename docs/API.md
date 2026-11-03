@@ -146,3 +146,31 @@ owner of a Draft. `Sent` stamps `sent_at`, sets a 7-day follow-up and logs a `co
 uncommitted funding line Declined. Nothing is ever sent from the app. Generic cost/funding CRUD and setup keep `projects.funding_gap` equal to the
 computed gap once cost lines exist (`syncFundingGap`). `POST/PATCH /projects` accept `spa_seller_cap`, `spa_clause_ref` (finance fields, stripped
 without finance.view/edit like the others). Cost lines accept `buyer_usage_pct` (0-100).
+
+## v1.4 (C): AI options, comms dialogs, custom widgets
+
+**`POST /api/ai/suggest`** (unchanged shape, extended)
+- New kind `project_fields` (needs `project.edit`, `projectId`): field suggestions for Edit project
+  (`description`, `tags`, `sensitivity`, `data_residency`, `clean_team_required`, `apps_in_scope`, `sites_in_scope`, `employees_conveying`, `risks[]`).
+- `current` should carry ALL form values. The server merges saved project values < `hints` < `current` (typed values win, empty values do not erase).
+  For `stages` / `activities`, `current.stages` / `current.activities` (names or `{name,...}` rows) are the list diffed against (unsaved rows), not the DB.
+  For `task`, the typed fields override the saved task.
+- Offline keyword engine (`server/src/ai/signals.ts`): SAP/S4/ERP, plants/OT/MES, Germany/EU/GDPR/works council, healthcare/GxP/FDA,
+  payments/PCI, cloud/AWS/Azure, mailboxes/M365, India/DPDP, export control, clean team. Industry overlays exist for all 7 industries and are never cut by the activity limit.
+- Response adds `options[]` (2-3 for list kinds: `tailored` (recommended), `standard`, `lean` or `risk`; 1-2 for single kinds), `recommendedId`, `inputSignals[]`.
+  Each option: `{ id, label, rationale, recommended?, draft, sources (deduplicated; only knowledge actually used, sharing deal type or industry), fromInputs[], stats, fieldReasons? }`.
+  `draft` / `rationale` / `sources` = the recommended option (backward compatible). Gemini refines the options (prompt contains the redacted typed values, no finance); invalid output falls back offline.
+
+**`POST /api/ai/meeting`** adds `attendeeIds[]`, `slots[{label,start ISO}]`, `durationMin`; `mode` is the real mode (Gemini title/agenda when configured). Attendees include next-step owners. The client viewer gets no internal people.
+
+**`POST /api/ai/comms/context`** `{scope, id}` → `CommsContext { ref, people[] (team + contacts, masked without contacts.view.full; none internal for CLIENT), canSave, canEmail, saveReason }`.
+
+**`POST /api/ai/comms/log`** `{scope, id, channel: 'Meeting'|'Email'|'Call', subject, body?, to_name?, occurred_at?, duration_min?, contact_id?, aiDrafted?}` → 201 Communication,
+linked to the scope's stage/activity/task. 403 for CLIENT, roles without `notes.add`, closed projects; 404 outside scope. Audit `communication.create` (ai_generated='Y' when `aiDrafted`).
+
+**Custom dashboard widgets** (catalogue: `shared/widgetCatalog.ts`; specs only, never code/SQL)
+- `POST /api/dashboard/widget-data` `{spec}` (or `GET ?spec=<json>`) → `WidgetData { spec, unit, currency?, total, rows[{key,label,value}], note? }`.
+  Same project scope as the dashboard. 400 invalid spec; 403 finance metric without `finance.view`, people grouping for CLIENT.
+- `POST /api/dashboard/widgets/suggest` `{text}` → `{possible:true, spec, explanation, mode}` or `{possible:false, reason, closestAlternatives[{spec,explanation}], suggestion:'Ask the analytics team', mode}`. Audit `ai.widget_suggest`.
+- `POST /api/dashboard/widgets/request` `{text}` → 201; audit entry `dashboard.widget_request` with the text (demo; nobody is e-mailed).
+- Specs persist per user inside `users.dashboard_layout`: `{version:1, items:[{i,x,y,w,h}], custom:{"cw-…": WidgetSpec}}` (old layouts without `custom` still load).

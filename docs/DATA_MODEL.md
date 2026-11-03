@@ -518,3 +518,10 @@ Every create/update/delete, AI suggestion, approval and denied access.
 - Seed consistency: cost lines add up exactly to `one_time_cost`; secured funding = `one_time_cost - funding_gap` (never above uses); non-draft
   invoices add up exactly to `fee_billed`; closed projects have no active TSA services; open projects' active TSA services add up to
   `tsa_monthly_cost`; monthly `tsa_cost` ends at the current run-rate. Atlas, Falcon and Delta now carry funding gaps (Rioja keeps US$1.74M).
+
+## v1.4 (C) notes
+- No new tables. Custom dashboard widgets live in `users.dashboard_layout` JSON: `custom` maps grid ids `cw-…` to a `WidgetSpec`
+  (`{title, metric, groupBy, chart, filter{status?,projectId?,mine?,atRisk?}}`) validated against `shared/widgetCatalog.ts` on every data request.
+- Meetings / emails / calls saved from the activity, stage and task dialogs are ordinary `communications` rows (channel Meeting / Email / Call)
+  with `stage_id` / `activity_id` / `task_id` of the screen; a meeting's `occurred_at` is the scheduled start and `duration_min` its length.
+- Audit actions added: `dashboard.widget_request`, `ai.widget_suggest`; `communication.create` details carry `via: 'comms-dialog'`.

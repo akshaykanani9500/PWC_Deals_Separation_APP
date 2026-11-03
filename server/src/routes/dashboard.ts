@@ -2,8 +2,11 @@ import { Router } from 'express';
 import type { Db } from '../db/Db';
 import type { AuthedRequest } from '../auth-types';
 import type { AuditEntry, DashboardData, FinanceEntry, Project, Stage, Task } from '../../../shared/types';
-import { ah } from '../errors';
+import { ah, HttpError } from '../errors';
 import { visibleProjectIds } from '../services/access';
+import { audit } from '../services/audit';
+import { computeWidget } from '../services/widgets';
+import { suggestWidget } from '../ai/widgetSuggest';
 import { isOverdue, today } from '../services/rollup';
 import { userIndex } from './helpers';
 
@@ -112,6 +115,35 @@ export function dashboardRouter(db: Db): Router {
       recentActivity: audits,
     };
     res.json(data);
+  }));
+
+  // ---------- v1.4 (C): custom widgets ----------
+  /** Widget data for a spec (validated against shared/widgetCatalog.ts; same project scope as the dashboard). */
+  r.post('/widget-data', ah(async (req, res) => {
+    const { auth } = req as AuthedRequest;
+    res.json(await computeWidget(db, auth, (req.body ?? {}).spec));
+  }));
+  r.get('/widget-data', ah(async (req, res) => {
+    const { auth } = req as AuthedRequest;
+    let spec: unknown = null;
+    try { spec = JSON.parse(String(req.query.spec ?? '')); } catch { throw new HttpError(400, 'spec must be JSON', 'VALIDATION'); }
+    res.json(await computeWidget(db, auth, spec));
+  }));
+  /** "Describe the widget you want" -> a valid spec, or possible:false with the closest alternatives. */
+  r.post('/widgets/suggest', ah(async (req, res) => {
+    const { auth } = req as AuthedRequest;
+    const text = String((req.body ?? {}).text ?? '').trim();
+    if (!text) throw new HttpError(400, 'Describe the widget you want.', 'VALIDATION');
+    if (text.length > 400) throw new HttpError(400, 'Keep the request under 400 characters.', 'VALIDATION');
+    res.json(await suggestWidget(db, auth, text));
+  }));
+  /** "Ask the analytics team": records the request in the audit log (demo; nobody is e-mailed). */
+  r.post('/widgets/request', ah(async (req, res) => {
+    const { auth } = req as AuthedRequest;
+    const text = String((req.body ?? {}).text ?? '').trim().slice(0, 400);
+    if (!text) throw new HttpError(400, 'Describe the widget you need.', 'VALIDATION');
+    await audit(db, auth, 'dashboard.widget_request', { type: 'dashboard', details: { text } });
+    res.status(201).json({ ok: true, message: 'Request sent to the analytics team (demo)' });
   }));
   return r;
 }

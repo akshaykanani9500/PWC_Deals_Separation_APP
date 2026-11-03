@@ -2,7 +2,8 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import type { Db } from '../db/Db';
 import type { AuthedRequest } from '../auth-types';
-import type { Lang, PikuRequest, SuggestRequest, ChatMessage } from '../../../shared/types';
+import type { Lang, PikuRequest, SuggestRequest, ChatMessage, CommsLogRequest } from '../../../shared/types';
+import { commsContext, logComms } from '../ai/comms';
 import { answerPiku } from '../ai/piku';
 import { suggest } from '../ai/suggest';
 import { summarize, draftEmail, suggestMeeting, type ScopeKind } from '../ai/summary';
@@ -13,7 +14,7 @@ import { capabilities } from '../ai/guardrails';
 import { screenPrompts } from '../ai/prompts';
 
 const SCOPES: ScopeKind[] = ['project', 'stage', 'activity', 'task'];
-const KINDS = ['project', 'stages', 'stage', 'activities', 'activity', 'tasks', 'task'];
+const KINDS = ['project', 'stages', 'stage', 'activities', 'activity', 'tasks', 'task', 'project_fields'];
 
 type Handler = (req: AuthedRequest, res: Response) => Promise<unknown>;
 
@@ -122,6 +123,23 @@ export function createAiRouter(db: Db): Router {
     const { scope, id, language } = req.body ?? {};
     if (!SCOPES.includes(scope) || typeof id !== 'string') throw bad('scope and id are required');
     return suggestMeeting(db, req.auth, scope, id, lang(language));
+  }));
+
+  // ---------- v1.4 (C): meeting / email / call dialogs ----------
+  /** People the dialogs may address (masked per role) and whether the user may save to the project log. */
+  r.post('/comms/context', route(['piku.use'], async (req) => {
+    const { scope, id } = req.body ?? {};
+    if (!SCOPES.includes(scope) || typeof id !== 'string') throw bad('scope and id are required');
+    return commsContext(db, req.auth, scope, id);
+  }));
+
+  /** Save a meeting / email / call to the project log (communications), linked to the screen's stage/activity/task. */
+  r.post('/comms/log', route(null, async (req, res) => {
+    const body = (req.body ?? {}) as CommsLogRequest;
+    if (!SCOPES.includes(body.scope) || typeof body.id !== 'string') throw bad('scope and id are required');
+    const row = await logComms(db, req.auth, body);
+    res.status(201).json(row);
+    return row;
   }));
 
   return r;

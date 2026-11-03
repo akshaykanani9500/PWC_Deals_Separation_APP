@@ -155,7 +155,7 @@ function StagePanel({ detail, stageDetail, base, version }: { detail: ProjectDet
     <>
       <StageContextCard stageDetail={stageDetail} base={base} version={version} />
       <AiSummaryCard scope="stage" id={stage.stage_id} />
-      <AiActions scope="stage" id={stage.stage_id} />
+      <AiActions scope="stage" id={stage.stage_id} onLogged={() => comms.reload()} />
       <PanelSection title="Recent communications" icon={<MessagesSquare size={14} />}>
         {comms.loading && !comms.data ? <Skeleton className="h-16" /> : <CommList comms={(comms.data ?? []).slice(0, 5)} />}
       </PanelSection>

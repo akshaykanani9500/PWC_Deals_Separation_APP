@@ -117,6 +117,38 @@ export const OVERLAYS: Record<string, Record<string, PlaybookActivity[]>> = {
       ['Inventory engineering tool profiles and licence servers', 'Critical', 'Y', 8], ['Secure EDA licence transfers or new licences', 'Critical', 'Y', 6],
       ['Agree funding split for engineering equipment gap', 'High', 'Y', 4], ['Test design flows on the new environment', 'Critical', 'Y', 10], ['Confirm order-processing and financial reporting systems', 'Critical', 'Y', 6]])],
   },
+  // v1.4 (C): overlays for every industry in the picker (Healthcare was promised in rationales but missing).
+  'Healthcare & Life Sciences': {
+    Signing: [A('GxP validated systems & CSV plan', 'Identify validated systems and plan computer system validation for the separated estate.', 'Critical', [
+      ['Inventory GxP-validated systems and their validation state', 'Critical', 'N', 10], ['Agree CSV approach (re-validate vs. leverage)', 'High', 'N', 6],
+      ['Confirm regulatory notifications (FDA / EMA / CDSCO)', 'High', 'Y', 4], ['Plan quality-system (QMS) separation', 'High', 'N', 6]])],
+    'Day-1 Readiness': [A('Validated systems re-qualification', 'Re-qualify validated systems on the new infrastructure before release decisions.', 'Critical', [
+      ['Execute IQ/OQ on new infrastructure for validated systems', 'Critical', 'Y', 16], ['Update validation documents and change controls', 'High', 'Y', 10],
+      ['QA sign-off for batch release systems', 'Critical', 'Y', 4], ['Confirm patient / health data protection controls', 'High', 'Y', 6]])],
+  },
+  'Consumer & Retail': {
+    'Day-1 Readiness': [A('Stores, POS & e-commerce continuity', 'Tills, loyalty, e-commerce and supply-chain feeds keep trading on Day-1.', 'Critical', [
+      ['Test POS and payment terminals on the new network', 'Critical', 'Y', 10], ['Confirm e-commerce platform, domains and payment gateway', 'Critical', 'Y', 8],
+      ['Split loyalty and customer data (consent checked)', 'High', 'Y', 8], ['Validate supplier EDI and replenishment feeds', 'High', 'Y', 6], ['Avoid peak trading weeks for cut-over', 'High', 'N', 2]])],
+  },
+  'Industrial Manufacturing': {
+    Diligence: [A('OT & plant systems inventory', 'List MES, SCADA, historians and plant networks per site and how they depend on the seller.', 'High', [
+      ['Inventory OT systems per plant (MES, SCADA, historians)', 'High', 'N', 12], ['Map plant network and OT/IT boundary', 'High', 'N', 8],
+      ['Identify shared OT licences and support contracts', 'Medium', 'N', 4], ['Assess OT cyber posture per site', 'High', 'N', 6]])],
+    'Day-1 Readiness': [A('Plant / OT cut-over & MES continuity', 'Plants keep producing on Day-1: OT network split, MES and quality systems work.', 'Critical', [
+      ['Agree production downtime windows with each plant', 'Critical', 'Y', 4], ['Split plant networks and OT firewalls', 'Critical', 'Y', 14],
+      ['Test MES and quality systems on the new network', 'Critical', 'Y', 12], ['Prepare plant-floor support and escalation', 'High', 'Y', 4], ['Confirm OT vendor support contracts transfer', 'High', 'Y', 4]])],
+  },
+  'Energy & Utilities': {
+    Signing: [A('Critical infrastructure & regulator obligations', 'Grid / plant control systems, NERC-CIP or CEA cyber rules and regulator approvals.', 'High', [
+      ['Identify critical-infrastructure systems in scope', 'High', 'N', 6], ['Check regulator approval and licence transfer needs', 'High', 'Y', 4],
+      ['Plan control-room (SCADA / EMS) separation', 'Critical', 'N', 8], ['Agree cyber-security obligations for the new operator', 'High', 'N', 4]])],
+  },
+  'Telecom & Media': {
+    'Day-1 Readiness': [A('Network, OSS/BSS & subscriber continuity', 'Billing, provisioning and subscriber data work on Day-1.', 'Critical', [
+      ['Separate OSS/BSS instances or agree TSA', 'Critical', 'Y', 12], ['Test billing and provisioning end to end', 'Critical', 'Y', 10],
+      ['Split subscriber data (consent checked)', 'High', 'Y', 8], ['Confirm spectrum / licence and interconnect agreements', 'High', 'Y', 4]])],
+  },
 };
 
 export const PLAYBOOK: PlaybookStage[] = DEFAULT_STAGES.map((s) => ({

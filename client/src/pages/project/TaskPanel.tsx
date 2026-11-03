@@ -186,7 +186,7 @@ export default function TaskPanel({ taskId, projectId, version, onClose, onChang
                   </div>
                 )}
                 <TaskFields form={form} set={(k, v) => setForm((f) => ({ ...f, [k]: v }))} editable={editable} users={users} aiChanged={ai?.changed} />
-                <AiActions scope="task" id={t.task_id} />
+                <AiActions scope="task" id={t.task_id} onLogged={() => { reload(); onChanged(); }} />
               </div>
             )}
 
@@ -248,7 +248,7 @@ export function AddTaskPanel({ open, onClose, activity, onSaved }: { open: boole
   const blank: Form = { title: '', description: '', assignee_user_id: '', status: 'Not Started', priority: 'Medium', due_date: '', start_date: '', percent_complete: '0', effort_hours: '', day1_critical: 'N', dependency_notes: '', done_notes: '', pending_notes: '' };
   const [form, setForm] = useState<Form>(blank);
   const [saving, setSaving] = useState(false);
-  const [ideas, setIdeas] = useState<{ title: string; priority?: string; day1_critical?: string; description?: string; pick: boolean }[]>([]);
+  const [ideas, setIdeas] = useState<{ title: string; priority?: string; day1_critical?: string; description?: string; effort_hours?: number; pick: boolean }[]>([]);
   const [mode, setMode] = useState<string | null>(null);
 
   useEffect(() => { if (open) { setForm(blank); setIdeas([]); setMode(null); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [open]);
@@ -263,7 +263,7 @@ export function AddTaskPanel({ open, onClose, activity, onSaved }: { open: boole
         await post(`/activities/${activity.activity_id}/tasks`, { ...body, status: form.status || 'Not Started' });
       }
       if (picked.length) {
-        await post(`/activities/${activity.activity_id}/tasks/bulk`, { tasks: picked.map(({ title, priority, day1_critical, description }) => ({ title, priority, description, day1_critical: day1_critical === 'Y' ? 'Y' : 'N', status: 'Not Started' })), fromAi: true });
+        await post(`/activities/${activity.activity_id}/tasks/bulk`, { tasks: picked.map(({ title, priority, day1_critical, description, effort_hours }) => ({ title, priority, description, effort_hours, day1_critical: day1_critical === 'Y' ? 'Y' : 'N', status: 'Not Started' })), fromAi: true });
       }
       toast.success(picked.length ? `${picked.length + (form.title?.trim() ? 1 : 0)} tasks added` : 'Task added');
       onSaved(); onClose();
@@ -272,9 +272,9 @@ export function AddTaskPanel({ open, onClose, activity, onSaved }: { open: boole
 
   return (
     <SidePanel open={open} onClose={onClose} width="lg" title="Add task" subtitle={`To activity: ${activity.name}`} onSave={save} saving={saving} saveLabel="Add tasks">
-      <AiStrip text="Get a list of tasks this activity usually needs, from approved learnings. Tick the ones to add."><AiSuggestButton label="Suggest tasks" request={{ kind: 'tasks', projectId: activity.project_id, stageId: activity.stage_id, activityId: activity.activity_id }}
+      <AiStrip text="Get a list of tasks this activity usually needs, from approved learnings. Tick the ones to add."><AiSuggestButton label="Suggest tasks" request={{ kind: 'tasks', projectId: activity.project_id, stageId: activity.stage_id, activityId: activity.activity_id, current: { activity_name: activity.name, title: form.title, description: form.description } }} applyToast="Suggested tasks listed — tick the ones to add, then press Add tasks"
         onApply={(draft, res) => { const list = Array.isArray(draft) ? draft : ((draft as Record<string, unknown>).tasks as Record<string, unknown>[] ?? []);
-          setIdeas(list.map((d) => ({ title: String(d.title ?? d.name ?? ''), priority: d.priority ? String(d.priority) : undefined, description: d.description ? String(d.description) : undefined, day1_critical: d.day1_critical === 'Y' || d.day1_critical === true ? 'Y' : 'N', pick: true })).filter((i) => i.title));
+          setIdeas(list.map((d) => ({ title: String(d.title ?? d.name ?? ''), priority: d.priority ? String(d.priority) : undefined, description: d.description ? String(d.description) : undefined, day1_critical: d.day1_critical === 'Y' || d.day1_critical === true ? 'Y' : 'N', effort_hours: d.effort_hours != null ? Number(d.effort_hours) : undefined, pick: true })).filter((i) => i.title));
           setMode(res.mode); }} /></AiStrip>
       {ideas.length > 0 && (
         <div className="mb-5 rounded-lg border border-piku/25 bg-piku-soft/40 p-3">

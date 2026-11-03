@@ -102,7 +102,7 @@ export function StageEditorPanel({ open, detail, onClose, onSaved }: { open: boo
     <>
       <SidePanel open={open} onClose={onClose} width="lg" title="Edit stages" subtitle="Stages appear as tabs on the project. Changes are saved together."
         onSave={save} saving={saving}>
-        <AiStrip text="Ask AI which stages fit this deal type and industry, based on approved learnings from closed projects."><AiSuggestButton label="Suggest stages" request={{ kind: 'stages', projectId: detail.project.project_id, current: { stages: rows.map((r) => r.name) } }} onApply={applySuggestion} /></AiStrip>
+        <AiStrip text="Ask AI which stages fit this deal type and industry, based on approved learnings from closed projects."><AiSuggestButton label="Suggest stages" request={{ kind: 'stages', projectId: detail.project.project_id, current: { stages: rows.map((r) => ({ name: r.name, description: r.description, gate_criteria: r.gate_criteria })) } }} onApply={applySuggestion} applyToast="Suggested stages listed — add the ones you want, then press Save" /></AiStrip>
         {ideas.length > 0 && (
           <div className="mb-4 rounded-lg border border-piku/25 bg-piku-soft/40 p-3">
             <div className="mb-1 flex items-center gap-2"><Sparkles size={13} className="text-piku" /><span className="text-[13px] font-semibold">Suggested stages</span>{aiMeta && <AiLabel mode={aiMeta.mode} />}</div>

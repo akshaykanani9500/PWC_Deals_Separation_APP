@@ -17,6 +17,10 @@ const TEXT_FIELDS = ['code_name', 'client_alias', 'deal_type', 'industry', 'desc
   'partner_user_id', 'manager_user_id', 'sensitivity', 'data_residency', 'clean_team_required', 'currency', 'tags'] as const;
 const NUM_FIELDS = ['apps_in_scope', 'sites_in_scope', 'employees_conveying'] as const;
 const FIN_FIELDS = ['fee_budget', 'fee_billed', 'tsa_monthly_cost', 'one_time_cost', 'funding_gap'] as const;
+const FIELD_LABEL: Record<string, string> = {
+  description: 'Description', tags: 'Tags', sensitivity: 'Sensitivity', data_residency: 'Data residency', clean_team_required: 'Clean team required',
+  apps_in_scope: 'Applications in scope', sites_in_scope: 'Sites in scope', employees_conveying: 'Employees conveying', risks: 'Key risks', client_alias: 'Client',
+};
 type Key = (typeof TEXT_FIELDS)[number] | (typeof NUM_FIELDS)[number] | (typeof FIN_FIELDS)[number];
 
 export function EditProjectPanel({ open, detail, onClose, onSaved }: { open: boolean; detail: ProjectDetail; onClose: () => void; onSaved: () => void }) {
@@ -34,7 +38,8 @@ export function EditProjectPanel({ open, detail, onClose, onSaved }: { open: boo
   const [f, setF] = useState(base);
   const [saving, setSaving] = useState(false);
   const [ai, setAi] = useState<{ mode: string; rationale: string } | null>(null);
-  useEffect(() => { if (open) { setF(base); setAi(null); } }, [open, base]);
+  const [ideas, setIdeas] = useState<{ key: string; value: unknown; reason?: string }[]>([]);
+  useEffect(() => { if (open) { setF(base); setAi(null); setIdeas([]); } }, [open, base]);
   const set = (k: Key, v: string) => setF((s) => ({ ...s, [k]: v }));
 
   async function save() {
@@ -49,14 +54,27 @@ export function EditProjectPanel({ open, detail, onClose, onSaved }: { open: boo
     catch (e) { toast.error(e); } finally { setSaving(false); }
   }
 
+  /** v1.4: "Improve with AI" returns field suggestions (project_fields); the user applies them one by one. */
   function apply(draft: SuggestResponse['draft'], res: SuggestResponse) {
     const d = (Array.isArray(draft) ? draft[0] ?? {} : draft) as Record<string, unknown>;
-    setF((s) => {
-      const n = { ...s };
-      for (const k of [...TEXT_FIELDS, ...NUM_FIELDS]) if (d[k] != null && k !== 'partner_user_id' && k !== 'manager_user_id') n[k] = String(d[k]);
-      return n;
-    });
+    const opt = res.options?.find((o) => o.id === res.recommendedId);
+    const fields = Object.entries(d).filter(([k, v]) => k === 'risks' ? Array.isArray(v) && v.length : (TEXT_FIELDS as readonly string[]).includes(k) || (NUM_FIELDS as readonly string[]).includes(k))
+      .filter(([k]) => k !== 'partner_user_id' && k !== 'manager_user_id')
+      .map(([k, v]) => ({ key: k, value: v, reason: opt?.fieldReasons?.[k] ?? res.options?.find((o) => o.draft === draft)?.fieldReasons?.[k] }));
+    setIdeas(fields);
     setAi({ mode: res.mode, rationale: res.rationale });
+  }
+  function applyField(k: string, v: unknown, quiet = false) {
+    if (k === 'risks') {
+      const lines = (v as string[]).map((r) => `- ${r}`).join('\n');
+      setF((s) => ({ ...s, description: `${s.description ? `${s.description.trim()}\n\n` : ''}Key risks:\n${lines}` }));
+    } else setF((s) => ({ ...s, [k]: String(v) }));
+    setIdeas((x) => x.filter((i) => i.key !== k));
+    if (!quiet) toast.success(`${FIELD_LABEL[k] ?? k} applied — review and press Save`);
+  }
+  function applyAll() {
+    for (const i of ideas) applyField(i.key, i.value, true);
+    toast.success('Suggestion applied — review and press Save');
   }
 
   const partners = users.filter((u) => u.persona_code === 'PARTNER');
@@ -64,8 +82,33 @@ export function EditProjectPanel({ open, detail, onClose, onSaved }: { open: boo
 
   return (
     <SidePanel open={open} onClose={onClose} width="lg" title="Edit project" subtitle={detail.project.project_id} onSave={save} saving={saving}>
-      <AiStrip text="AI can tidy the description and fill missing scope fields from the project's records. Review before saving."><AiSuggestButton label="Improve with AI" request={{ kind: 'project', projectId: detail.project.project_id, current: f, hints: { deal_type: f.deal_type, industry: f.industry, name: f.code_name, description: f.description } }} onApply={apply} /></AiStrip>
-      {ai && <div className="mb-3 rounded-lg bg-piku-soft/60 px-3 py-2 text-[12.5px] text-ink-soft"><div className="mb-1 flex items-center gap-2"><Sparkles size={13} className="text-piku" /><AiLabel mode={ai.mode} /> <span>Review the changes, then save.</span></div>{ai.rationale}</div>}
+      <AiStrip text="AI reads what you have typed (description, client, residency, tags...) and suggests better field values and key risks. Apply them one by one, then save.">
+        <AiSuggestButton label="Improve with AI" applyToast={false}
+          request={{ kind: 'project_fields', projectId: detail.project.project_id, current: Object.fromEntries(Object.entries(f).filter(([k]) => !(FIN_FIELDS as readonly string[]).includes(k))), hints: { deal_type: f.deal_type, industry: f.industry, name: f.code_name, description: f.description } }}
+          onApply={apply} />
+      </AiStrip>
+      {ai && (
+        <div className="mb-3 rounded-lg border border-piku/25 bg-piku-soft/40 px-3 py-2 text-[12.5px] text-ink-soft" data-testid="ai-field-ideas">
+          <div className="mb-1 flex items-center gap-2"><Sparkles size={13} className="text-piku" /><AiLabel mode={ai.mode} /> <span>Apply the fields you want, then save.</span></div>
+          <p className="mb-2">{ai.rationale}</p>
+          {ideas.length ? (
+            <ul className="space-y-1.5">
+              {ideas.map((i) => (
+                <li key={i.key} className="flex items-start gap-2 rounded-md bg-surface px-2.5 py-1.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">{FIELD_LABEL[i.key] ?? i.key}</div>
+                    {Array.isArray(i.value) ? <ul className="list-disc pl-4 text-ink">{(i.value as string[]).map((r) => <li key={r}>{r}</li>)}</ul>
+                      : <div className="whitespace-pre-wrap text-ink">{i.key === 'clean_team_required' ? (i.value === 'Y' ? 'Yes' : 'No') : String(i.value)}</div>}
+                    {i.reason && <div className="text-[11.5px] text-ink-muted">{i.reason}</div>}
+                  </div>
+                  <Button size="sm" onClick={() => applyField(i.key, i.value)} aria-label={`Apply ${FIELD_LABEL[i.key] ?? i.key}`}>{i.key === 'risks' ? 'Add to description' : 'Apply'}</Button>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-ink-muted">All suggestions applied (or none left). Review and press Save.</p>}
+          {ideas.length > 1 && <div className="mt-2 flex gap-2"><Button size="sm" variant="primary" onClick={applyAll}>Apply all</Button><Button size="sm" variant="ghost" onClick={() => { setIdeas([]); setAi(null); }}>Dismiss</Button></div>}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Code name"><Input value={f.code_name} onChange={(e) => set('code_name', e.target.value)} /></Field>
         <Field label="Client (described)"><Input value={f.client_alias} onChange={(e) => set('client_alias', e.target.value)} /></Field>

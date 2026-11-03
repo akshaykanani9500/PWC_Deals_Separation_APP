@@ -402,7 +402,7 @@ function ActivitySidebar({ data, detail, version, projectId, onChanged }: { data
     <>
       <ActivityContextCard data={data} />
       <AiSummaryCard scope="activity" id={a.activity_id} />
-      <AiActions scope="activity" id={a.activity_id} />
+      <AiActions scope="activity" id={a.activity_id} onLogged={onChanged} />
 
       <PanelSection title="At a glance" icon={<PieIcon size={14} />}>
         <div className="flex items-center gap-3">
